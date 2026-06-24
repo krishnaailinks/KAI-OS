@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { getServiceSupabase } from "@/lib/server/supabase";
 
 const DASHBOARD_ROLES: Record<string, string> = {
   "/dashboard/director": "director",
@@ -99,7 +100,8 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const { data: profile } = await supabase
+  const adminDb = getServiceSupabase();
+  const { data: profile } = await adminDb
     .from("profiles")
     .select("role")
     .eq("id", user.id)
