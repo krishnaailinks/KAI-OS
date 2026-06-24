@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
 };
 
 const sentryConfig = {
-  org: process.env.SENTRY_ORG || "krishna-ai-links",
+  org: process.env.SENTRY_ORG || "krishna-ai-links-pvt-ltd",
   project: process.env.SENTRY_PROJECT || "kai-os",
   silent: !process.env.CI,
   widenClientFileUpload: true,
