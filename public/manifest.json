@@ -1,16 +1,25 @@
 {
-  "name": "KAI-OS",
+  "name": "KAI-OS — Krishna AI Links Pvt. Ltd.",
   "short_name": "KAI-OS",
-  "description": "Krishna AI Operating System",
-  "start_url": "/",
+  "description": "Enterprise Management Console for Krishna AI Links Pvt. Ltd.",
+  "start_url": "/login",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

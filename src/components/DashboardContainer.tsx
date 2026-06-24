@@ -6,11 +6,6 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import { 
-  Cpu, 
-  Wifi, 
-  Database, 
-  Play, 
-  Flame,
   Compass,
   LayoutDashboard,
   MessageSquare,
@@ -28,15 +23,12 @@ import {
   Users,
   FolderKanban,
   Activity,
+  Database,
   Plus,
-  Bug,
-  GitBranch,
-  Clock,
-  AlertCircle
 } from "lucide-react";
 import { KanbanBoard } from "./KanbanBoard";
 import { TeamMessaging } from "./TeamMessaging";
-import { LiveMeeting } from "./LiveMeeting";
+import { LiveMeeting, type ActiveMeeting } from "./LiveMeeting";
 import { AuditLogs } from "./AuditLogs";
 import { DirectorModePanel } from "./DirectorModePanel";
 import { TaskDetailsModal } from "./TaskDetailsModal";
@@ -45,6 +37,7 @@ import { CompanyDirectory } from "./CompanyDirectory";
 import { ExecutiveAuditCenter } from "./ExecutiveAuditCenter";
 import { AdminSuperPanel } from "./AdminSuperPanel";
 import { ProjectManager } from "./ProjectManager";
+import SectionErrorBoundary from "./SectionErrorBoundary";
 import { TabId, SystemPermissions, DashboardState, Task, ColumnId, Column } from "../types/dashboard";
 
 const INITIAL_TASKS: Record<string, Task> = {};
@@ -65,12 +58,6 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
   const { theme, setTheme } = useTheme();
   
   const [logs, setLogs] = useState<{message: string, timestamp: string}[]>([]);
-  const [cpuLoad, setCpuLoad] = useState(48);
-  const [latency, setLatency] = useState(24);
-  const [memory, setMemory] = useState(12.8);
-  const [scanning, setScanning] = useState(false);
-  const [soundEnabled] = useState(false);
-  const [systemActive] = useState(true);
 
   const [activeTab, setActiveTab] = useState<TabId>(role === "client" ? "CLIENT_PORTAL" : "DASHBOARD");
   const [isDirectorModeOpen, setIsDirectorModeOpen] = useState(false);
@@ -84,11 +71,37 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
 
   const [isLocked, setIsLocked] = useState(false);
   const [lockPassword, setLockPassword] = useState("");
+  const [lockError, setLockError] = useState("");
+  const [lockLoading, setLockLoading] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [activeMeeting, setActiveMeeting] = useState<ActiveMeeting | null>(null);
+
+  const verifyLockPassword = async () => {
+    if (!lockPassword) return;
+    setLockLoading(true);
+    setLockError("");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: (await supabase.auth.getSession()).data.session?.user?.email || "",
+        password: lockPassword,
+      });
+      if (error) {
+        setLockError("Invalid password. Access denied.");
+        setLockLoading(false);
+        return;
+      }
+      setIsLocked(false);
+      setLockPassword("");
+    } catch {
+      setLockError("Verification failed.");
+    }
+    setLockLoading(false);
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSearchTask, setActiveSearchTask] = useState<Task | null>(null);
 
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
 
   // LIFETIME BOARD STATE
   const [boardState, setBoardState] = useState<DashboardState>({
@@ -103,7 +116,6 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
       const res = await apiFetch('/api/me');
       if (!res.ok) {
         await supabase.auth.signOut();
-        document.cookie = "kai_os_session=; Path=/; Max-Age=0; SameSite=Lax";
         router.replace('/login');
         return;
       }
@@ -357,27 +369,6 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
     }
   }, [permissions.systemLockout]);
 
-  // Telemetry
-  useEffect(() => {
-    const telemetryInterval = setInterval(() => {
-      if (!systemActive) return;
-      setCpuLoad((prev) => {
-        const delta = Math.floor(Math.random() * 15) - 7;
-        return Math.max(10, Math.min(95, prev + delta));
-      });
-      setLatency((prev) => {
-        const delta = Math.floor(Math.random() * 5) - 2;
-        return Math.max(12, Math.min(120, prev + delta));
-      });
-      setMemory((prev) => {
-        const delta = Number((Math.random() * 0.2 - 0.1).toFixed(1));
-        return Math.max(8.0, Math.min(15.9, prev + delta));
-      });
-    }, 3000);
-
-    return () => clearInterval(telemetryInterval);
-  }, [systemActive]);
-
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev, { message, timestamp }].slice(-50));
@@ -390,21 +381,8 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
     }).catch(() => {});
   }, []);
 
-  const handleStartScan = () => {
-    if (scanning) return;
-    setScanning(true);
-    addLog("[DIAGNOSTIC] Initializing system memory sweep...");
-    setTimeout(() => addLog(`[DIAGNOSTIC] Validating permissions. Role: ${role.toUpperCase()}`), 1000);
-    setTimeout(() => addLog("[DIAGNOSTIC] Checking node health... ALL CLEAR."), 2500);
-    setTimeout(() => {
-      addLog("[DIAGNOSTIC] Diagnostics complete.");
-      setScanning(false);
-    }, 4000);
-  };
-
   const handleLogout = () => {
     supabase.auth.signOut();
-    document.cookie = "kai_os_session=; Path=/; Max-Age=0; SameSite=Lax";
     router.push("/login");
   };
 
@@ -423,127 +401,120 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-sm relative overflow-hidden">
                 <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold tracking-wide mb-2">
                   <span className="flex items-center gap-1.5 uppercase">
-                    <Cpu className="w-3.5 h-3.5 text-blue-500" />
-                    System Load
+                    <FolderKanban className="w-3.5 h-3.5 text-blue-500" />
+                    Total Tasks
                   </span>
-                  <span className="text-slate-400">CORE 01</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    {systemActive ? cpuLoad : "00"}
+                    {Object.keys(boardState.tasks).length}
                   </span>
-                  <span className="text-xs text-slate-500 font-mono">%</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
-                  <div 
-                    className="h-full bg-blue-500 transition-all duration-300"
-                    style={{ width: `${systemActive ? cpuLoad : 0}%` }}
-                  />
                 </div>
               </div>
 
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-sm relative overflow-hidden">
                 <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold tracking-wide mb-2">
                   <span className="flex items-center gap-1.5 uppercase">
-                    <Wifi className="w-3.5 h-3.5 text-sky-500" />
-                    Latency
+                    <Activity className="w-3.5 h-3.5 text-sky-500" />
+                    In Progress
                   </span>
-                  <span className="text-slate-400">SYNC NODE</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    {systemActive ? latency : "00"}
+                    {boardState.columns["IN_PROGRESS"]?.taskIds.length || 0}
                   </span>
-                  <span className="text-xs text-slate-500 font-mono">ms</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
-                  <div 
-                    className="h-full bg-sky-500 transition-all duration-300"
-                    style={{ width: `${systemActive ? (latency / 120) * 100 : 0}%` }}
-                  />
                 </div>
               </div>
 
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-sm relative overflow-hidden">
                 <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold tracking-wide mb-2">
                   <span className="flex items-center gap-1.5 uppercase">
-                    <Database className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    Memory
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+                    In Review
                   </span>
-                  <span className="text-slate-400">INDEX</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    {systemActive ? memory.toFixed(1) : "0.0"}
+                    {boardState.columns["IN_REVIEW"]?.taskIds.length || 0}
                   </span>
-                  <span className="text-xs text-slate-500 font-mono">/ 16.0 GB</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
-                  <div 
-                    className="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-300"
-                    style={{ width: `${systemActive ? (memory / 16) * 100 : 0}%` }}
-                  />
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-between">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-sm relative overflow-hidden">
                 <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold tracking-wide mb-2">
                   <span className="flex items-center gap-1.5 uppercase">
-                    <Flame className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                    System Health
+                    <LayoutDashboard className="w-3.5 h-3.5 text-emerald-500" />
+                    Completed
                   </span>
-                  <span className="text-slate-400">DIAGNOSTICS</span>
                 </div>
-                
-                <button
-                  onClick={handleStartScan}
-                  disabled={scanning || !systemActive}
-                  className={`w-full flex items-center justify-center gap-1.5 py-2 border text-xs font-bold rounded-lg transition-all duration-150 mt-1 shadow-sm ${
-                    scanning 
-                      ? "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed"
-                      : !systemActive 
-                        ? "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 cursor-not-allowed"
-                        : "bg-blue-600 border-blue-700 text-white hover:bg-blue-700 cursor-pointer"
-                  }`}
-                >
-                  <Play className={`w-3.5 h-3.5 ${scanning ? "" : "text-white"}`} />
-                  <span>{scanning ? "SCANNING..." : "RUN DIAGNOSTICS"}</span>
-                </button>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                    {boardState.columns["COMPLETED"]?.taskIds.length || 0}
+                  </span>
+                </div>
               </div>
             </section>
           </div>
         </div>
 
         <div className={`w-full h-full ${activeTab === "TEAM_CHAT" ? "block" : "hidden"}`}>
-          <TeamMessaging permissions={permissions} />
+          <SectionErrorBoundary title="Team Hub">
+            <TeamMessaging
+              permissions={permissions}
+              role={role as "director" | "employee" | "client"}
+              onJoinMeeting={(roomCode, roomName, roomId) => {
+                setActiveMeeting({ roomCode, roomName, roomId });
+                setActiveTab("LIVE_MEETING");
+              }}
+            />
+          </SectionErrorBoundary>
         </div>
 
         <div className={`w-full h-full ${activeTab === "LIVE_MEETING" ? "block" : "hidden"}`}>
-          <LiveMeeting permissions={permissions} role={role as "employee" | "director"} />
+          <SectionErrorBoundary title="Live Meeting">
+            <LiveMeeting
+              permissions={permissions}
+              role={role as "employee" | "director"}
+              activeMeeting={activeMeeting}
+              onLeaveMeeting={() => setActiveMeeting(null)}
+            />
+          </SectionErrorBoundary>
         </div>
 
         <div className={`w-full h-full ${activeTab === "AUDIT_LOGS" ? "block" : "hidden"}`}>
-          <AuditLogs permissions={permissions} role={role as "employee" | "director"} />
+          <SectionErrorBoundary title="Audit Logs">
+            <AuditLogs permissions={permissions} role={role as "employee" | "director"} />
+          </SectionErrorBoundary>
         </div>
 
         <div className={`w-full h-full overflow-hidden ${activeTab === "FINANCE" ? "block" : "hidden"}`}>
-          <FinancePanel role={role as "employee" | "director"} />
+          <SectionErrorBoundary title="Finance">
+            <FinancePanel role={role as "employee" | "director"} />
+          </SectionErrorBoundary>
         </div>
 
         <div className={`w-full h-full overflow-hidden ${activeTab === "DIRECTORY" ? "block" : "hidden"}`}>
-          <CompanyDirectory role={role as "employee" | "director"} />
+          <SectionErrorBoundary title="Directory">
+            <CompanyDirectory role={role as "employee" | "director"} />
+          </SectionErrorBoundary>
         </div>
 
         <div className={`w-full h-full overflow-hidden ${activeTab === "AUDIT_CENTER" ? "block" : "hidden"}`}>
-          <ExecutiveAuditCenter role={role as "employee" | "director"} />
+          <SectionErrorBoundary title="Audit Center">
+            <ExecutiveAuditCenter role={role as "employee" | "director"} />
+          </SectionErrorBoundary>
         </div>
 
         <div className={`w-full h-full overflow-hidden ${activeTab === "ADMIN_SUPER" ? "block" : "hidden"}`}>
-          <AdminSuperPanel role={role as "employee" | "director"} />
+          <SectionErrorBoundary title="Admin Panel">
+            <AdminSuperPanel role={role as "employee" | "director"} />
+          </SectionErrorBoundary>
         </div>
 
         <div className={`w-full h-full overflow-hidden ${activeTab === "PROJECT_MANAGER" ? "block" : "hidden"}`}>
-          <ProjectManager role={role as "employee" | "director"} />
+          <SectionErrorBoundary title="Project Manager">
+            <ProjectManager role={role as "employee" | "director"} />
+          </SectionErrorBoundary>
         </div>
       </>
     );
@@ -552,7 +523,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
   return (
     <div className="h-screen bg-slate-50 dark:bg-slate-950 relative text-slate-900 dark:text-slate-100 flex flex-col overflow-hidden font-sans transition-colors">
       <div className="flex-1 flex max-w-[1600px] w-full mx-auto overflow-hidden">
-        <aside className="w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hidden md:flex flex-col shadow-sm z-10">
+        <aside className={`w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 ${focusMode ? "hidden" : "hidden md:flex"} flex-col shadow-sm z-10`}>
           <div className="p-4 border-b border-slate-200 dark:border-slate-800">
             {role === "client" ? (
               <>
@@ -690,7 +661,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
               </div>
               
               <div className="hidden sm:flex items-center gap-2">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-sm">K</div>
+                <img src="/icon.png" alt="KAI-OS" className="w-8 h-8 object-contain" />
                 <div className="mr-4">
                   <h1 className="font-bold text-slate-800 dark:text-white leading-tight tracking-tight text-sm">KAI-OS</h1>
                   <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Krishna AI Links Pvt. Ltd.</p>
@@ -754,10 +725,23 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
                 <button
                   onClick={() => setIsLocked(true)}
                   className="p-2 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400 rounded-lg transition-all shadow-sm"
+                  title="Lock Session"
                 >
                   <LockIcon className="w-4 h-4" />
                 </button>
               )}
+
+              <button
+                onClick={() => setFocusMode(!focusMode)}
+                className={`p-2 border rounded-lg transition-all shadow-sm ${
+                  focusMode
+                    ? "bg-blue-600 border-blue-700 text-white"
+                    : "border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
+                }`}
+                title={focusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+              </button>
 
               <button
                 onClick={() => mounted && setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -780,6 +764,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
             {role === "client" ? (
               activeTab === "CLIENT_PORTAL" && (
                 <div className="p-6">
+                  <SectionErrorBoundary title="Client Portal">
                   <ClientPortal 
                     boardState={boardState}
                     projects={projects}
@@ -811,12 +796,14 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
                       setActiveSearchTask(task);
                     }}
                   />
+                  </SectionErrorBoundary>
                 </div>
               )
             ) : (
               <>
                 <div className={`h-full p-6 ${activeTab === 'DASHBOARD' ? 'block' : 'hidden'}`}>
-                  <KanbanBoard 
+                  <SectionErrorBoundary title="Kanban Board">
+                    <KanbanBoard 
                     role={role as "employee" | "director"} 
                     onLogEvent={addLog} 
                     boardState={boardState} 
@@ -825,6 +812,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
                     resetBoard={resetBoard}
                     toast={toast}
                   />
+                  </SectionErrorBoundary>
                 </div>
                 <div className={`h-full p-6 ${activeTab !== 'DASHBOARD' ? 'block' : 'hidden'}`}>
                   {renderTabs()}
@@ -853,8 +841,14 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
             <LockIcon className="w-10 h-10 text-blue-400" />
           </div>
           <h2 className="text-3xl font-bold tracking-tight mb-2">Session Locked</h2>
-          <p className="text-slate-400 mb-8 font-mono text-sm">Enter access token to resume.</p>
-          
+          <p className="text-slate-400 mb-8 font-mono text-sm">Re-enter your password to resume.</p>
+
+          {lockError && (
+            <div className="mb-4 px-4 py-2 bg-red-500/20 border border-red-500/40 rounded-lg text-red-300 text-sm font-bold">
+              {lockError}
+            </div>
+          )}
+
           <div className="w-full max-w-sm flex gap-3">
             <input
               type="password"
@@ -862,23 +856,23 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
               value={lockPassword}
               onChange={(e) => setLockPassword(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && lockPassword) {
-                  setIsLocked(false);
-                  setLockPassword("");
+                if (e.key === 'Enter' && lockPassword && !lockLoading) {
+                  verifyLockPassword();
                 }
               }}
-              className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono tracking-widest text-center"
+              disabled={lockLoading}
+              className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono tracking-widest text-center disabled:opacity-50"
             />
             <button
-              onClick={() => {
-                if (lockPassword) {
-                  setIsLocked(false);
-                  setLockPassword("");
-                }
-              }}
-              className="px-6 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold transition-colors shadow-lg shadow-blue-900/50 flex items-center justify-center"
+              onClick={verifyLockPassword}
+              disabled={!lockPassword || lockLoading}
+              className="px-6 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 rounded-xl font-bold transition-colors shadow-lg shadow-blue-900/50 flex items-center justify-center disabled:cursor-not-allowed"
             >
-              <Unlock className="w-5 h-5" />
+              {lockLoading ? (
+                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Unlock className="w-5 h-5" />
+              )}
             </button>
           </div>
         </div>
@@ -963,9 +957,17 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
    PHASE 11: CLIENT SERVICE DESK PORTAL COMPONENT
    ========================================================== */
 
+interface ProjectSummary {
+  id: string;
+  name: string;
+  description?: string;
+  status: string;
+  tasks?: { count: number }[];
+}
+
 interface ClientPortalProps {
   boardState: DashboardState;
-  projects: any[];
+  projects: ProjectSummary[];
   onAddTask: (task: Task) => void;
   onClickTask: (task: Task) => void;
 }
@@ -1118,7 +1120,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ boardState, projects, onAdd
                   <div 
                     key={task.id} 
                     onClick={() => onClickTask(task)}
-                    className="p-4 bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-800 rounded-2xl hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm cursor-pointer transition-all flex items-center justify-between gap-4"
+                    className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm cursor-pointer transition-all flex items-center justify-between gap-4"
                   >
                     <div className="flex flex-col gap-1 overflow-hidden">
                       <div className="flex items-center gap-2">
@@ -1181,7 +1183,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ boardState, projects, onAdd
                 required
                 value={associatedProj}
                 onChange={(e) => setAssociatedProj(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               >
                 <option value="">Select Project...</option>
                 {projects.map(p => (
@@ -1195,8 +1197,8 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ boardState, projects, onAdd
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Ticket Type</label>
                 <select
                   value={ticketType}
-                  onChange={(e) => setTicketType(e.target.value as any)}
-                  className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  onChange={(e) => setTicketType(e.target.value as "bug" | "feature")}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 >
                   <option value="bug">Bug / Defect</option>
                   <option value="feature">Feature Req.</option>
@@ -1207,8 +1209,8 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ boardState, projects, onAdd
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Priority</label>
                 <select
                   value={ticketPriority}
-                  onChange={(e) => setTicketPriority(e.target.value as any)}
-                  className="w-full bg-slate-50 dark:bg-slate-955 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  onChange={(e) => setTicketPriority(e.target.value as "LOW" | "STANDARD" | "ELEVATED" | "CRITICAL")}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 >
                   <option value="LOW">Low</option>
                   <option value="STANDARD">Standard</option>

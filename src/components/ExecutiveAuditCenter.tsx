@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { ShieldCheck, Calendar, FileText, ArrowRight, Download, BarChart3, Users, DollarSign, Activity } from "lucide-react";
+import { AuditReportGenerator } from "./audit/AuditReportGenerator";
 import { apiFetch } from "@/lib/api";
 
 interface ExecutiveAuditCenterProps {
@@ -427,6 +428,10 @@ END OF REPORT
           <p className="text-xs text-slate-500 max-w-sm mt-1 leading-relaxed">Specify a date interval above to fetch and compile operational metrics across all 4 core pillars.</p>
         </div>
       )}
+
+      <div className="mt-8">
+        <AuditReportGenerator />
+      </div>
     </div>
   );
 };

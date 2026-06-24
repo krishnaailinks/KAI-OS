@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getServerSupabase, getServiceSupabase } from './supabase';
+import { getServerSupabase, getServiceSupabase, getUserScopedSupabase } from './supabase';
 
 export type UserRole = 'employee' | 'director' | 'client';
 
@@ -17,6 +17,10 @@ export interface AuthContext {
   email: string;
   role: UserRole;
   profile: AppProfile;
+  /** User-scoped client — respects all RLS policies. Use for most queries. */
+  db: SupabaseClient;
+  /** Service-role client — bypasses RLS. Use only for trusted server operations
+   *  (payroll execution, audit log writes, admin scripts). */
   adminDb: SupabaseClient;
 }
 
@@ -52,14 +56,24 @@ export const authenticateRequest = async (request: Request): Promise<AuthContext
   }
 
   const adminDb = getServiceSupabase();
+
+  // Fetch profile and lockout flag in one query via PostgREST join.
   const { data: profile, error: profileError } = await adminDb
     .from('profiles')
-    .select('id, email, full_name, role, status')
+    .select('id, email, full_name, role, status, personnel_permissions(system_lockout)')
     .eq('id', userData.user.id)
     .single();
 
   if (profileError || !profile) {
     throw new HttpError(403, 'Authenticated user profile was not found');
+  }
+
+  // Enforce system_lockout globally — no API call succeeds while a user is locked.
+  const permsRow = Array.isArray(profile.personnel_permissions)
+    ? profile.personnel_permissions[0]
+    : profile.personnel_permissions;
+  if (permsRow?.system_lockout === true) {
+    throw new HttpError(423, 'Your account has been locked by an administrator. Contact your director.');
   }
 
   const role = isRole(profile.role) ? profile.role : 'employee';
@@ -75,6 +89,7 @@ export const authenticateRequest = async (request: Request): Promise<AuthContext
       role,
       status: profile.status,
     },
+    db: getUserScopedSupabase(token),
     adminDb,
   };
 };
@@ -92,13 +107,49 @@ export const jsonError = (error: unknown) => {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
 
-  const message = error instanceof Error ? error.message : 'Internal Server Error';
-  const isConfigurationError = message.includes('SUPABASE') || message.includes('NEXT_PUBLIC_SUPABASE');
+  if (error instanceof SyntaxError) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
 
-  return NextResponse.json(
-    { error: isConfigurationError ? message : 'Internal Server Error' },
-    { status: 500 },
-  );
+  if (error instanceof Error) {
+    console.error('[API Error]', error.message);
+    const message = error.message.includes('SUPABASE') || error.message.includes('NEXT_PUBLIC_SUPABASE')
+      ? 'Server configuration error'
+      : 'Internal Server Error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+};
+
+import type { ZodSchema } from 'zod';
+
+export const validateBody = <T>(schema: ZodSchema<T>, body: unknown): { data?: T; error?: NextResponse } => {
+  const result = schema.safeParse(body);
+  if (!result.success) {
+    const firstError = result.error.issues[0];
+    return {
+      error: NextResponse.json(
+        { error: firstError?.message || 'Validation failed' },
+        { status: 400 },
+      ),
+    };
+  }
+  return { data: result.data };
+};
+
+/** Fetch the personnel_permissions row for a user.
+ *  Returns safe defaults if no row exists yet. */
+export const getUserPermissions = async (
+  adminDb: SupabaseClient,
+  userId: string,
+): Promise<{ allow_video: boolean; allow_audit: boolean; system_lockout: boolean }> => {
+  const { data } = await adminDb
+    .from('personnel_permissions')
+    .select('allow_video, allow_audit, system_lockout')
+    .eq('user_id', userId)
+    .maybeSingle();
+  return data ?? { allow_video: false, allow_audit: false, system_lockout: false };
 };
 
 export const writeAuditLog = async (

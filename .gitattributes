@@ -1,0 +1,18 @@
+# Normalize line endings to LF in the repository on all platforms
+* text=auto eol=lf
+
+# Binary files — do not mangle
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary

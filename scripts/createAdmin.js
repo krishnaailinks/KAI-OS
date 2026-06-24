@@ -9,11 +9,12 @@ const supabase = createClient(
 async function createAdmin() {
   console.log("Injecting Founder Account directly into the database...");
   
-  // Create the auth user bypassing rate limits
+  const password = process.env.FOUNDER_PASSWORD || (() => { throw new Error("FOUNDER_PASSWORD environment variable must be set"); })();
+
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email: 'founder@krishna-ai.com',
-    password: 'KAI-secure-2026!',
-    email_confirm: true // Force confirmation so they can login immediately
+    password,
+    email_confirm: true,
   });
 
   if (authError) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authenticateRequest, jsonError, writeAuditLog } from '@/lib/server/auth';
+import { authenticateRequest, jsonError, writeAuditLog, validateBody } from '@/lib/server/auth';
+import { profileUpdateSchema } from '@/lib/validation';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,7 +12,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: 'You can only update your own profile' }, { status: 403 });
     }
 
-    const body = await req.json();
+    const rawBody = await req.json();
+    const validation = validateBody(profileUpdateSchema, rawBody);
+    if (validation.error) return validation.error;
+
+    const updates: Record<string, unknown> = { ...validation.data!, updated_at: new Date().toISOString() };
+
+    if (role !== 'director') {
+      delete updates.salary_amount;
+      delete updates.job_title;
+      delete updates.role;
+    }
 
     const { data: existing } = await adminDb.from('employee_profiles').select('id').eq('user_id', id).maybeSingle();
 
@@ -19,17 +30,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (existing) {
       const { data, error } = await adminDb
         .from('employee_profiles')
-        .update({ ...body, updated_at: new Date().toISOString() })
+        .update(updates)
         .eq('user_id', id)
         .select()
         .single();
       if (error) throw error;
       result = data;
     } else {
-      // Insert
       const { data, error } = await adminDb
         .from('employee_profiles')
-        .insert([{ user_id: id, ...body }])
+        .insert([{ user_id: id, ...updates }])
         .select()
         .single();
       if (error) throw error;

@@ -1,30 +1,42 @@
 import { NextResponse } from 'next/server';
-import { authenticateRequest, jsonError, writeAuditLog } from '@/lib/server/auth';
+import { authenticateRequest, jsonError, writeAuditLog, validateBody } from '@/lib/server/auth';
+import { dailyReportSchema } from '@/lib/validation';
+import { getLocalDate, isValidDateParam, parsePagination } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
     const { adminDb, userId, role } = await authenticateRequest(req);
+
+    if (role === 'client') {
+      return NextResponse.json({ error: 'Client accounts do not submit daily reports' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const fetchAll = searchParams.get('all') === 'true';
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const tz = searchParams.get('tz');
+    const { from, to } = parsePagination(searchParams, 50, 200);
 
-    let query = adminDb.from('daily_reports').select('*');
+    let query = adminDb.from('daily_reports').select('*', { count: 'exact' });
     
     if (fetchAll && role === 'director') {
       if (startDate && endDate) {
+        if (!isValidDateParam(startDate) || !isValidDateParam(endDate)) {
+          return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD.' }, { status: 400 });
+        }
         query = query.gte('date', startDate).lte('date', endDate);
       }
     } else {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDate(tz ?? undefined);
       query = query.eq('user_id', userId).eq('date', today);
     }
 
-    const { data: reports, error } = await query.order('date', { ascending: false });
+    const { data: reports, error, count } = await query.order('date', { ascending: false }).range(from, to);
 
     if (error) throw error;
 
-    return NextResponse.json({ reports: reports || [] });
+    return NextResponse.json({ reports: reports || [], total: count ?? reports?.length ?? 0 });
   } catch (err: unknown) {
     return jsonError(err);
   }
@@ -32,12 +44,18 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { adminDb, userId } = await authenticateRequest(req);
+    const { adminDb, userId, role } = await authenticateRequest(req);
 
-    const { report_text } = await req.json();
-    if (!report_text) return NextResponse.json({ error: "Report text is required" }, { status: 400 });
+    if (role === 'client') {
+      return NextResponse.json({ error: 'Client accounts do not submit daily reports' }, { status: 403 });
+    }
 
-    const today = new Date().toISOString().split('T')[0];
+    const rawBody = await req.json();
+    const validation = validateBody(dailyReportSchema, rawBody);
+    if (validation.error) return validation.error;
+    const { report_text, tz } = validation.data!;
+
+    const today = getLocalDate(tz ?? undefined);
 
     const { data: existing } = await adminDb
       .from('daily_reports')

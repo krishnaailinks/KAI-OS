@@ -1,34 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/server/supabase';
-import { jsonError } from '@/lib/server/auth';
-
-type AccountType = 'employee' | 'director';
-
-const isAccountType = (value: unknown): value is AccountType => value === 'employee' || value === 'director';
-
-const isStrongPassword = (password: string) => (
-  password.length >= 8
-  && /[A-Z]/.test(password)
-  && /[0-9]/.test(password)
-  && /[^A-Za-z0-9]/.test(password)
-);
+import { jsonError, validateBody } from '@/lib/server/auth';
+import { rateLimit, rateLimitResponse } from '@/lib/security';
+import { registerSchema } from '@/lib/validation';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    const accountType = isAccountType(body.accountType) ? body.accountType : 'employee';
-    const accessCode = typeof body.accessCode === 'string' ? body.accessCode : '';
+    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
+    const rl = rateLimit(`register:${clientIp}`, 5, 60000);
+    if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
-    }
+    const rawBody = await req.json();
+    const validation = validateBody(registerSchema, rawBody);
+    if (validation.error) return validation.error;
 
-    if (!isStrongPassword(password)) {
-      return NextResponse.json({ error: 'Password must be at least 8 characters and include uppercase, number, and symbol' }, { status: 400 });
-    }
+    const { name, email, password, accountType, accessCode } = validation.data!;
 
     if (accountType === 'director') {
       const expectedCode = process.env.DIRECTOR_REGISTRATION_CODE;
@@ -43,7 +29,7 @@ export async function POST(req: Request) {
 
     const adminDb = getServiceSupabase();
     const { data: createdUser, error: createUserError } = await adminDb.auth.admin.createUser({
-      email,
+      email: email.toLowerCase().trim(),
       password,
       email_confirm: true,
       user_metadata: {

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, User, Building, ArrowRight, Fingerprint } from "lucide-react";
+import { Lock, User, ArrowRight, Fingerprint } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
@@ -28,8 +28,6 @@ export default function LoginPage() {
       if (authError) throw authError;
 
       if (data.user) {
-        document.cookie = `kai_os_session=active; Path=/; Max-Age=86400; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
-        
         const profileResponse = await apiFetch('/api/me');
 
         if (!profileResponse.ok) {
@@ -38,11 +36,10 @@ export default function LoginPage() {
 
         const { profile } = await profileResponse.json();
 
-        if (profile.role === 'director') {
-          router.push("/dashboard/director");
-        } else {
-          router.push("/dashboard/employee");
-        }
+        const target = profile.role === 'director' ? '/dashboard/director'
+          : profile.role === 'client' ? '/dashboard/client'
+          : '/dashboard/employee';
+        router.push(target);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Invalid credentials. Access denied.");
@@ -61,28 +58,12 @@ export default function LoginPage() {
           <motion.div 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="flex justify-center items-center gap-2 mb-4"
+            className="flex justify-center mb-6"
           >
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-sky-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/30 border border-blue-400/20">
-              <Building className="w-8 h-8 text-white" />
+            <div className="flex items-center justify-center px-4">
+              <img src="/logo-horizontal.png" alt="KAI-OS" className="w-full max-w-[320px] h-auto object-contain" />
             </div>
           </motion.div>
-          <motion.h1 
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white"
-          >
-            KAI-OS
-          </motion.h1>
-          <motion.p 
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium tracking-wide uppercase"
-          >
-            Krishna AI Links Pvt. Ltd.
-          </motion.p>
         </div>
 
         <motion.div 

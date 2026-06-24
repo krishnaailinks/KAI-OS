@@ -110,26 +110,38 @@ export const AdminSuperPanel: React.FC<AdminSuperPanelProps> = ({ role }) => {
 
         <button 
           onClick={async () => {
+            const totalAmount = stats?.totalPayroll || 0;
+            if (!window.confirm(`Execute payroll for all pending records?\n\nTotal to disburse: $${totalAmount.toLocaleString()}\n\nThis action cannot be undone.`)) {
+              return;
+            }
             setExecutingPayroll(true);
             try {
-              const res = await apiFetch("/api/payroll", { method: "POST" });
+              const res = await apiFetch("/api/payroll", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  confirm: true,
+                  maxTotal: totalAmount * 1.1,
+                }),
+              });
               if (res.ok) {
                 const data = await res.json();
-                
-                // Trigger markdown download
-                const blob = new Blob([data.receipt_content || "# Payroll Executed Successfully\n\nTotal disbursed: $" + (stats?.totalPayroll || 0)], { type: "text/markdown" });
+                const blob = new Blob([data.receipt_content || "# Payroll Executed Successfully\n\nTotal disbursed: $" + totalAmount], { type: "text/markdown" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
                 a.download = `Payroll_Receipt_${new Date().toISOString().split('T')[0]}.md`;
                 a.click();
                 URL.revokeObjectURL(url);
-                
                 setPayrollSuccess(true);
                 setTimeout(() => setPayrollSuccess(false), 5000);
+              } else {
+                const errData = await res.json();
+                alert(`Payroll execution failed: ${errData.error || 'Unknown error'}`);
               }
             } catch(e) {
               console.error(e);
+              alert("Payroll execution failed. Check console for details.");
             } finally {
               setExecutingPayroll(false);
             }

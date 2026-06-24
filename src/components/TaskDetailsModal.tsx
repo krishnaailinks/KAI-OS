@@ -118,7 +118,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
             } else {
               setTimesheetHistory([]);
             }
-          } catch (e) {
+          } catch {
             setTimesheetHistory([]);
           }
         } else {
@@ -261,7 +261,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
             initial={{ scale: 0.95, y: 10, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.95, y: 10, opacity: 0 }}
-            className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden z-10 max-h-[90vh] flex flex-col"
+            className="relative w-full max-w-2xl mx-2 sm:mx-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden z-10 max-h-[90vh] flex flex-col"
           >
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 mb-4">
               <div className="flex items-center gap-3">
@@ -567,7 +567,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                           <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1.5">Severity Level</label>
                           <select
                             value={bugSeverity}
-                            onChange={(e) => setBugSeverity(e.target.value as any)}
+                            onChange={(e) => setBugSeverity(e.target.value as "low" | "medium" | "high" | "critical")}
                             disabled={isClient}
                             className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-800 dark:text-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/50 w-full"
                           >
@@ -582,7 +582,7 @@ export const TaskDetailsModal: React.FC<TaskDetailsModalProps> = ({
                           <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1.5">Test Environment</label>
                           <select
                             value={bugEnvironment}
-                            onChange={(e) => setBugEnvironment(e.target.value as any)}
+                            onChange={(e) => setBugEnvironment(e.target.value as "development" | "staging" | "production")}
                             disabled={isClient}
                             className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-800 dark:text-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/50 w-full"
                           >

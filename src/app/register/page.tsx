@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, User, KeyRound, ArrowRight, ShieldCheck, Mail, AlertTriangle, CheckCircle } from "lucide-react";
+import { Lock, User, KeyRound, ArrowRight, Mail, AlertTriangle, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function RegisterPage() {
@@ -120,12 +120,11 @@ export default function RegisterPage() {
 
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="flex justify-center items-center gap-2 mb-4">
-            <div className="w-12 h-12 bg-sky-500 rounded-xl flex items-center justify-center shadow-lg shadow-sky-500/20 border border-sky-400">
-              <ShieldCheck className="w-7 h-7 text-white" />
+          <div className="flex justify-center mb-6">
+            <div className="flex items-center justify-center px-4">
+              <img src="/logo-horizontal.png" alt="KAI-OS" className="w-full max-w-[300px] h-auto object-contain" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">KAI-OS</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">Clearance Registration Portal</p>
         </div>
 

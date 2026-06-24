@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
-  role TEXT NOT NULL DEFAULT 'employee' CHECK (role IN ('employee', 'director')),
+  role TEXT NOT NULL DEFAULT 'employee' CHECK (role IN ('employee', 'director', 'client')),
   department TEXT,
   status TEXT DEFAULT 'Offline',
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -194,6 +194,13 @@ CREATE INDEX IF NOT EXISTS idx_daily_reports_user_date ON public.daily_reports(u
 CREATE INDEX IF NOT EXISTS idx_team_messages_channel_created ON public.team_messages(channel_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON public.system_audit_logs(timestamp DESC);
 
+-- Performance indexes identified as missing in audit (2026-06-24)
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee_id ON public.tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_generated_at ON public.invoices(generated_at);
+CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON public.invoices(due_date);
+CREATE INDEX IF NOT EXISTS idx_payroll_status ON public.payroll(status);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+
 DO $$
 DECLARE
   table_name TEXT;
@@ -296,6 +303,10 @@ DROP POLICY IF EXISTS audit_logs_select_director ON public.system_audit_logs;
 DROP POLICY IF EXISTS audit_logs_insert_authenticated ON public.system_audit_logs;
 CREATE POLICY audit_logs_select_director ON public.system_audit_logs FOR SELECT TO authenticated USING (public.is_director());
 CREATE POLICY audit_logs_insert_authenticated ON public.system_audit_logs FOR INSERT TO authenticated WITH CHECK (triggered_by = auth.uid()::TEXT OR public.is_director());
+
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
 
 DROP TRIGGER IF EXISTS touch_profiles_updated_at ON public.profiles;
 CREATE TRIGGER touch_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();

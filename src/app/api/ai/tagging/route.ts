@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { authenticateRequest, HttpError, jsonError } from '@/lib/server/auth';
+import { requireDirector, HttpError, jsonError } from '@/lib/server/auth';
+import { rateLimit, rateLimitResponse } from '@/lib/security';
 
 export async function POST(request: Request) {
   try {
-    await authenticateRequest(request);
+    const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    const rl = rateLimit(`ai-tagging:${clientIp}`, 10, 60_000);
+    if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
+    await requireDirector(request);
 
     const { title, description } = await request.json();
 

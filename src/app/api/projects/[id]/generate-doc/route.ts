@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { authenticateRequest, jsonError } from '@/lib/server/auth';
+import { requireDirector, jsonError } from '@/lib/server/auth';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { adminDb } = await authenticateRequest(req);
+    const { adminDb } = await requireDirector(req);
     const { id: projectId } = await params;
     
     const { data: project, error: projectError } = await adminDb

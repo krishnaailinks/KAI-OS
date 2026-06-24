@@ -1,26 +1,38 @@
 import { NextResponse } from 'next/server';
-import { authenticateRequest, jsonError, writeAuditLog } from '@/lib/server/auth';
+import { authenticateRequest, jsonError, writeAuditLog, validateBody } from '@/lib/server/auth';
+import { attendanceActionSchema } from '@/lib/validation';
+import { getLocalDate, isValidDateParam, parsePagination } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
     const { adminDb, userId, role } = await authenticateRequest(req);
+
+    if (role === 'client') {
+      return NextResponse.json({ error: 'Client accounts do not use attendance tracking' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const fetchAll = searchParams.get('all') === 'true';
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const tz = searchParams.get('tz');
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDate(tz ?? undefined);
 
     if (fetchAll && role === 'director') {
-      let query = adminDb.from('attendance_logs').select('*');
+      let query = adminDb.from('attendance_logs').select('*', { count: 'exact' });
       
       if (startDate && endDate) {
+        if (!isValidDateParam(startDate) || !isValidDateParam(endDate)) {
+          return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD.' }, { status: 400 });
+        }
         query = query.gte('date', startDate).lte('date', endDate);
       }
       
-      const { data: allAttendance, error: allErr } = await query.order('date', { ascending: false });
+      const { from, to } = parsePagination(searchParams, 50, 200);
+      const { data: allAttendance, error: allErr, count } = await query.order('date', { ascending: false }).range(from, to);
       if (allErr) throw allErr;
-      return NextResponse.json({ attendance: allAttendance || [] });
+      return NextResponse.json({ attendance: allAttendance || [], total: count ?? allAttendance?.length ?? 0 });
     }
 
     // Default: Get today's attendance for the logged-in user
@@ -41,10 +53,17 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { adminDb, userId } = await authenticateRequest(req);
+    const { adminDb, userId, role } = await authenticateRequest(req);
 
-    const { action } = await req.json(); // 'check_in' or 'check_out'
-    const today = new Date().toISOString().split('T')[0];
+    if (role === 'client') {
+      return NextResponse.json({ error: 'Client accounts do not use attendance tracking' }, { status: 403 });
+    }
+
+    const rawBody = await req.json();
+    const bodyValidation = validateBody(attendanceActionSchema, rawBody);
+    if (bodyValidation.error) return bodyValidation.error;
+    const { action, tz } = bodyValidation.data!;
+    const today = getLocalDate(tz ?? undefined);
     const now = new Date().toISOString();
 
     const { data: existing } = await adminDb

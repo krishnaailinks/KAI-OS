@@ -1,6 +1,8 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ──────────────────────────────────────────────────────────────────────────────
+# KAI-OS — .gitignore
+# ──────────────────────────────────────────────────────────────────────────────
 
-# dependencies
+# ── Dependencies ──────────────────────────────────────────────────────────────
 /node_modules
 /.pnp
 .pnp.*
@@ -10,32 +12,49 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# ── Next.js build output ──────────────────────────────────────────────────────
 /.next/
 /out/
-
-# production
 /build
 
-# misc
+# ── TypeScript / SWC cache ────────────────────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts
+.swc/
+
+# ── Environment / Secrets ─────────────────────────────────────────────────────
+# NEVER commit real credentials. Copy .env.local.example → .env.local.
+.env.local
+.env*.local
+.env.development
+.env.production
+.env.test
+# Allow the example template (no real secrets inside)
+!.env.local.example
+
+# ── Local-only credentials file (real values, human-readable) ─────────────────
+CREDENTIALS.local.md
+
+# ── Test artifacts ────────────────────────────────────────────────────────────
+/coverage
+/playwright-report
+/test-results
+
+# ── PWA service worker source maps (contain local build machine paths) ────────
+public/sw.js.map
+public/workbox-*.js.map
+
+# ── Sentry generated files ────────────────────────────────────────────────────
+.sentryclirc
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
 .DS_Store
 *.pem
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# ── Local-only project documentation ──────────────────────────────────────────
+PROJECT_DOCUMENTATION.md

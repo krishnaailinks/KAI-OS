@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
 import { jsonError, requireDirector } from '@/lib/server/auth';
+import { getLocalDate, rateLimit, rateLimitResponse } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
-    const { adminDb } = await requireDirector(req);
+    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
+    const rl = rateLimit(`live-stats:${clientIp}`, 30, 60_000);
+    if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
-    const today = new Date().toISOString().split('T')[0];
+    const { adminDb } = await requireDirector(req);
+    const { searchParams } = new URL(req.url);
+    const tz = searchParams.get('tz');
+
+    const today = getLocalDate(tz ?? undefined);
     const [
       profilesResult,
       activeProjectsResult,
@@ -42,7 +49,12 @@ export async function GET(req: Request) {
       securityIncidents: securityResult.count || 0
     };
 
-    return NextResponse.json({ stats });
+    return NextResponse.json({ stats }, {
+      headers: {
+        // Cache at CDN/reverse proxy for 30 seconds to reduce DB load on frequent dashboard polls.
+        'Cache-Control': 'private, max-age=30',
+      },
+    });
   } catch (err: unknown) {
     return jsonError(err);
   }

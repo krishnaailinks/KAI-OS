@@ -32,7 +32,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
 
     return () => {
-      authListener.subscription.unsubscribe();
+      authListener?.subscription?.unsubscribe();
     };
   }, [router]);
 
