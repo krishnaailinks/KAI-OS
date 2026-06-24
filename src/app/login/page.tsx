@@ -40,7 +40,7 @@ export default function LoginPage() {
         const target = profile.role === 'director' ? '/dashboard/director'
           : profile.role === 'client' ? '/dashboard/client'
           : '/dashboard/employee';
-        router.push(target);
+        window.location.href = target;
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Invalid credentials. Access denied.");
