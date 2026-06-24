@@ -176,7 +176,7 @@ export const TeamMessaging: React.FC<TeamMessagingProps> = ({
       cancelled = true;
       supabase.removeChannel(rtChannel);
     };
-  }, [activeChannel?.slug]);
+  }, [activeChannel]);
 
   // ── Send message ────────────────────────────────────────────────────────────
   const handleSend = async () => {

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Lock, User, ArrowRight, Fingerprint } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
@@ -61,7 +62,7 @@ export default function LoginPage() {
             className="flex justify-center mb-6"
           >
             <div className="flex items-center justify-center px-4">
-              <img src="/logo-horizontal.png" alt="KAI-OS" className="w-full max-w-[320px] h-auto object-contain" />
+              <Image src="/logo-horizontal.png" alt="KAI-OS" width={500} height={139} className="w-full max-w-[320px] h-auto object-contain" />
             </div>
           </motion.div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -661,7 +662,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
               </div>
               
               <div className="hidden sm:flex items-center gap-2">
-                <img src="/icon.png" alt="KAI-OS" className="w-8 h-8 object-contain" />
+                <Image src="/icon.png" alt="KAI-OS" width={176} height={200} className="w-8 h-8 object-contain" />
                 <div className="mr-4">
                   <h1 className="font-bold text-slate-800 dark:text-white leading-tight tracking-tight text-sm">KAI-OS</h1>
                   <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Krishna AI Links Pvt. Ltd.</p>

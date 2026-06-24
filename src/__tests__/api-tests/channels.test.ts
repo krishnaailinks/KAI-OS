@@ -41,12 +41,6 @@ const DIRECTOR = {
   adminDb: {} as never,
 };
 
-const EMPLOYEE = {
-  ...DIRECTOR,
-  userId: 'emp-uuid',
-  role: 'employee',
-  profile: { ...DIRECTOR.profile, id: 'emp-uuid', role: 'employee' },
-};
 
 // Build an adminDb that uses per-query from() chains
 function makeAdminDb(...queryResults: Array<unknown>) {

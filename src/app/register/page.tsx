@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Lock, User, KeyRound, ArrowRight, Mail, AlertTriangle, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -122,7 +123,7 @@ export default function RegisterPage() {
         <div className="text-center mb-8">
           <div className="flex justify-center mb-6">
             <div className="flex items-center justify-center px-4">
-              <img src="/logo-horizontal.png" alt="KAI-OS" className="w-full max-w-[300px] h-auto object-contain" />
+              <Image src="/logo-horizontal.png" alt="KAI-OS" width={500} height={139} className="w-full max-w-[300px] h-auto object-contain" />
             </div>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">Clearance Registration Portal</p>

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import React, { useState, useEffect } from "react";
 import { Users, Clock, FileText, CheckCircle, MapPin, Phone, Building2, Upload, Calendar, ArrowRight, ShieldAlert, Award } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -126,6 +128,7 @@ export const CompanyDirectory: React.FC<CompanyDirectoryProps> = ({ role }) => {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
   // Refetch timesheets on date change
@@ -133,6 +136,7 @@ export const CompanyDirectory: React.FC<CompanyDirectoryProps> = ({ role }) => {
     if (role === 'director' && currentUserId) {
       fetchTimesheets();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate]);
 
   const handleCheckIn = async () => {
