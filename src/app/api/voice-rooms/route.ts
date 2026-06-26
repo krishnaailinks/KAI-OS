@@ -1,91 +1,91 @@
 import { NextResponse } from 'next/server';
-import {
-  authenticateRequest,
-  getUserPermissions,
-  HttpError,
-  jsonError,
-  validateBody,
-  writeAuditLog,
-} from '@/lib/server/auth';
-import { voiceRoomCreateSchema } from '@/lib/validation';
-import { rateLimit, rateLimitResponse } from '@/lib/security';
+import { authenticateRequest, jsonError } from '@/lib/server/auth';
+import { parsePagination, rateLimit, rateLimitResponse } from '@/lib/security';
+
+interface PermissionRow {
+  user_id: string;
+  allow_video: boolean;
+  allow_audit: boolean;
+  system_lockout: boolean;
+}
+
+interface ProfileWithPermissions {
+  id: string;
+  full_name: string | null;
+  email: string;
+  role: string;
+  status: string | null;
+  personnel_permissions: PermissionRow | null;
+}
 
 export async function GET(req: Request) {
   try {
-    const { adminDb } = await authenticateRequest(req);
-
-    const { data, error } = await adminDb
-      .from('voice_rooms')
-      .select('id, name, room_code, created_by, is_active, max_participants, created_at, voice_room_participants(user_id, display_name, joined_at, left_at)')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    // Strip participants who have left
-    const rooms = (data || []).map(room => ({
-      id: room.id,
-      name: room.name,
-      room_code: room.room_code,
-      created_by: room.created_by,
-      is_active: room.is_active,
-      max_participants: room.max_participants,
-      created_at: room.created_at,
-      participants: (Array.isArray(room.voice_room_participants) ? room.voice_room_participants : [])
-        .filter((p: { left_at: string | null }) => !p.left_at)
-        .map((p: { user_id: string; display_name: string }) => ({
-          user_id: p.user_id,
-          display_name: p.display_name,
-        })),
-    }));
-
-    return NextResponse.json({ rooms });
-  } catch (err: unknown) {
-    return jsonError(err);
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`voice-rooms:create:${clientIp}`, 5, 60_000);
+    // 1. Robust Proxy-Aware IP Rate Limiting Layer
+    const forwardedFor = req.headers.get('x-forwarded-for');
+    const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : (req.headers.get('x-real-ip') || 'unknown');
+    
+    // Protect administrative/personnel lookups from burst scraping or script spam
+    const rl = rateLimit(`permissions:get:${clientIp}`, 30, 60_000); 
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
-    const { adminDb, userId, role, profile } = await authenticateRequest(req);
-
-    // allow_video permission gates meeting room creation (directors always allowed)
-    if (role !== 'director') {
-      const perms = await getUserPermissions(adminDb, userId);
-      if (!perms.allow_video) {
-        throw new HttpError(403, 'Video meeting access has not been granted for your account. Contact your director.');
-      }
+    // 2. Strict Authentication Context Gate Check
+    const { adminDb, role, userId } = await authenticateRequest(req);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized Access' }, { status: 401 });
     }
 
-    const rawBody = await req.json().catch(() => ({}));
-    const validation = validateBody(voiceRoomCreateSchema, rawBody);
-    if (validation.error) return validation.error;
+    // 3. Director Path: Access Paginated Personnel Directory
+    if (role === 'director') {
+      const { searchParams } = new URL(req.url);
+      const { from, to } = parsePagination(searchParams, 50, 200);
+      
+      // PRODUCTION OPTIMIZATION: Switched to 'planned' count estimation block. 
+      // This forces PostgreSQL to instantly read internal table statistics metadata
+      // instead of executing a sequential table scan on every page load.
+      const { data, error, count } = await adminDb
+        .from('profiles')
+        .select(`
+          id,
+          full_name,
+          email,
+          role,
+          status,
+          personnel_permissions (
+            user_id,
+            allow_video,
+            allow_audit,
+            system_lockout
+          )
+        `, { count: 'planned' })
+        .range(from, to) as { data: ProfileWithPermissions[] | null; error: unknown; count: number | null };
 
-    const { name, max_participants } = validation.data!;
-    // Unique room code used as the Jitsi Meet room identifier
-    const roomCode = `kai-os-${userId.slice(0, 8)}-${Date.now().toString(36)}`;
+      if (error) throw error;
+      
+      return NextResponse.json({ 
+        profiles: data || [], 
+        total: count ?? data?.length ?? 0 
+      });
+    }
 
+    // 4. Employee/Client Path: Restricted Non-Director Self-Lookup Matrix
+    // Explicit projection ensures we only retrieve minimal targeted column parameters over the wire
     const { data, error } = await adminDb
-      .from('voice_rooms')
-      .insert([{ name, room_code: roomCode, created_by: userId, max_participants }])
-      .select('id, name, room_code, created_by, is_active, max_participants, created_at')
-      .single();
+      .from('personnel_permissions')
+      .select('user_id, allow_video, allow_audit, system_lockout')
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (error) throw error;
 
-    await writeAuditLog(
-      adminDb,
-      'communication',
-      `${profile.full_name || userId} created meeting room "${name}"`,
-      userId,
-      'low',
-    );
-
-    return NextResponse.json({ room: data }, { status: 201 });
+    // Return current user state or standard secure fallback permissions object
+    return NextResponse.json({
+      permissions: (data as PermissionRow | null) || { 
+        user_id: userId,
+        allow_video: false, 
+        allow_audit: false, 
+        system_lockout: false 
+      }
+    });
   } catch (err: unknown) {
     return jsonError(err);
   }
