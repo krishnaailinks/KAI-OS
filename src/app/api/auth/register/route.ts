@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/server/supabase';
 import { jsonError, validateBody } from '@/lib/server/auth';
-import { rateLimit, rateLimitResponse } from '@/lib/security';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '@/lib/security';
 import { registerSchema } from '@/lib/validation';
 
 export async function POST(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`register:${clientIp}`, 5, 60000);
+    const rl = await checkRateLimit(`register:${getClientIp(req)}`, 5, 60000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     const rawBody = await req.json();

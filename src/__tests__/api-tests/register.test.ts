@@ -5,7 +5,7 @@ import { POST } from '@/app/api/auth/register/route';
 
 jest.mock('@/lib/security', () => ({
   ...jest.requireActual('@/lib/security'),
-  rateLimit: jest.fn().mockReturnValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 }),
+  checkRateLimit: jest.fn().mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60000 }),
   rateLimitResponse: jest.fn(),
 }));
 

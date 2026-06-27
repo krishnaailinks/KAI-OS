@@ -26,7 +26,8 @@ jest.mock('@/lib/server/auth', () => ({
 }));
 
 jest.mock('@/lib/security', () => ({
-  rateLimit: jest.fn().mockReturnValue({ allowed: true, remaining: 9, resetAt: Date.now() + 60000 }),
+  getClientIp: jest.fn().mockReturnValue('test-ip'),
+  checkRateLimit: jest.fn().mockResolvedValue({ allowed: true, remaining: 9, resetAt: Date.now() + 60000 }),
   rateLimitResponse: jest.fn().mockReturnValue(new Response('Rate limited', { status: 429 })),
 }));
 
@@ -160,8 +161,8 @@ describe('POST /api/channels', () => {
   });
 
   it('returns 429 when rate limited', async () => {
-    const { rateLimit } = require('@/lib/security');
-    rateLimit.mockReturnValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000 });
+    const { checkRateLimit } = require('@/lib/security');
+    (checkRateLimit as jest.Mock).mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000 });
     requireDirector.mockResolvedValue({ ...DIRECTOR, adminDb: makeAdminDb() });
 
     const res = await POST(postReq({ name: 'test' }));

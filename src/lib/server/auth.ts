@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServerSupabase, getServiceSupabase, getUserScopedSupabase } from './supabase';
 
 export type UserRole = 'employee' | 'director' | 'client';
+export type AuditSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type AuditEventType = 'communication' | 'finance' | 'hrms' | 'project' | 'security' | 'task';
 
 export interface AppProfile {
   id: string;
@@ -12,11 +14,18 @@ export interface AppProfile {
   status: string | null;
 }
 
+export interface UserPermissions {
+  allowVideo: boolean;
+  allowAudit: boolean;
+  systemLockout: boolean;
+}
+
 export interface AuthContext {
   userId: string;
   email: string;
   role: UserRole;
   profile: AppProfile;
+  permissions: UserPermissions;
   /** User-scoped client — respects all RLS policies. Use for most queries. */
   db: SupabaseClient;
   /** Service-role client — bypasses RLS. Use only for trusted server operations
@@ -57,10 +66,12 @@ export const authenticateRequest = async (request: Request): Promise<AuthContext
 
   const adminDb = getServiceSupabase();
 
-  // Fetch profile and lockout flag in one query via PostgREST join.
+  // Fetch profile + all permissions in one query via PostgREST join.
+  // Pulling allow_video and allow_audit here eliminates a second round-trip
+  // in voice room routes that previously called getUserPermissions() separately.
   const { data: profile, error: profileError } = await adminDb
     .from('profiles')
-    .select('id, email, full_name, role, status, personnel_permissions(system_lockout)')
+    .select('id, email, full_name, role, status, personnel_permissions(system_lockout, allow_video, allow_audit)')
     .eq('id', userData.user.id)
     .single();
 
@@ -88,6 +99,11 @@ export const authenticateRequest = async (request: Request): Promise<AuthContext
       full_name: profile.full_name,
       role,
       status: profile.status,
+    },
+    permissions: {
+      allowVideo: permsRow?.allow_video ?? false,
+      allowAudit: permsRow?.allow_audit ?? false,
+      systemLockout: permsRow?.system_lockout ?? false,
     },
     db: getUserScopedSupabase(token),
     adminDb,
@@ -154,10 +170,10 @@ export const getUserPermissions = async (
 
 export const writeAuditLog = async (
   adminDb: SupabaseClient,
-  eventType: string,
+  eventType: AuditEventType,
   message: string,
   triggeredBy = 'SYSTEM',
-  severity: 'low' | 'medium' | 'high' | 'critical' = 'low',
+  severity: AuditSeverity = 'low',
 ) => {
   await adminDb.from('system_audit_logs').insert([{
     event_type: eventType,

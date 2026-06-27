@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { authenticateRequest, jsonError } from '@/lib/server/auth';
-import { parsePagination, rateLimit, rateLimitResponse } from '@/lib/security';
+import { checkRateLimit, getClientIp, parsePagination, rateLimitResponse } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`profiles:${clientIp}`, 60, 60_000);
+    const rl = await checkRateLimit(`profiles:${getClientIp(req)}`, 60, 60_000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     const { adminDb, role } = await authenticateRequest(req);

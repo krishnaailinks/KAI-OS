@@ -1,19 +1,17 @@
 import { NextResponse } from 'next/server';
-import { authenticateRequest, getUserPermissions, HttpError, jsonError, writeAuditLog } from '@/lib/server/auth';
+import { authenticateRequest, HttpError, jsonError, writeAuditLog } from '@/lib/server/auth';
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { adminDb, userId, role, profile } = await authenticateRequest(req);
+    const { adminDb, userId, role, profile, permissions } = await authenticateRequest(req);
 
-    // allow_video gates meeting join (directors always allowed)
-    if (role !== 'director') {
-      const perms = await getUserPermissions(adminDb, userId);
-      if (!perms.allow_video) {
-        throw new HttpError(403, 'Video meeting access has not been granted for your account.');
-      }
+    // allow_video gates meeting join (directors always allowed).
+    // permissions.allowVideo is fetched as part of the auth join — no extra DB call.
+    if (role !== 'director' && !permissions.allowVideo) {
+      throw new HttpError(403, 'Video meeting access has not been granted for your account.');
     }
 
     const { id } = await params;

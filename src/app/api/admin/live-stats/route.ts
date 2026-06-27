@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { jsonError, requireDirector } from '@/lib/server/auth';
-import { getLocalDate, rateLimit, rateLimitResponse } from '@/lib/security';
+import { checkRateLimit, getClientIp, getLocalDate, rateLimitResponse } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`live-stats:${clientIp}`, 30, 60_000);
+    const rl = await checkRateLimit(`live-stats:${getClientIp(req)}`, 30, 60_000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     const { adminDb } = await requireDirector(req);

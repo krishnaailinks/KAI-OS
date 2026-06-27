@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireDirector, jsonError } from '@/lib/server/auth';
 import { getServiceSupabase } from '@/lib/server/supabase';
-import { isValidDateParam, rateLimit, rateLimitResponse } from '@/lib/security';
+import { checkRateLimit, getClientIp, isValidDateParam, rateLimitResponse } from '@/lib/security';
 
 const MAX_LOG_CHARS = 800_000;
 const DB_FETCH_LIMIT = 50_000;
@@ -9,8 +9,7 @@ const GEMINI_MODEL = 'gemini-2.0-flash';
 
 export async function POST(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`audit-report:${clientIp}`, 5, 60_000);
+    const rl = await checkRateLimit(`audit-report:${getClientIp(req)}`, 5, 60_000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     await requireDirector(req);

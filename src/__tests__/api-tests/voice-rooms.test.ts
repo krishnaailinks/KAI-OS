@@ -24,6 +24,7 @@ let _mockAuthCtx: {
   adminDb: unknown;
   db: unknown;
   profile: { id: string; email: string; full_name: string; role: string; status: string };
+  permissions: { allowVideo: boolean; allowAudit: boolean; systemLockout: boolean };
 } | null = null;
 
 jest.mock('@/lib/server/auth', () => ({
@@ -35,7 +36,6 @@ jest.mock('@/lib/server/auth', () => ({
     }
     return Promise.resolve(_mockAuthCtx);
   }),
-  getUserPermissions: jest.fn(),
   jsonError: (err: unknown) => {
     const e = err as { status?: number; message?: string };
     return new Response(JSON.stringify({ error: e?.message ?? String(err) }), { status: e?.status ?? 500 });
@@ -53,7 +53,8 @@ jest.mock('@/lib/server/auth', () => ({
 }));
 
 jest.mock('@/lib/security', () => ({
-  rateLimit: jest.fn().mockReturnValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60_000 }),
+  getClientIp: jest.fn().mockReturnValue('test-ip'),
+  checkRateLimit: jest.fn().mockResolvedValue({ allowed: true, remaining: 4, resetAt: Date.now() + 60_000 }),
   rateLimitResponse: jest.fn().mockReturnValue(new Response('Rate limited', { status: 429 })),
 }));
 
@@ -66,13 +67,19 @@ import { POST as LEAVE } from '@/app/api/voice-rooms/[id]/leave/route';
 
 // ── Test contexts ─────────────────────────────────────────────────────────────
 
-const makeCtx = (role: string, userId = `${role}-001`, adminDb: unknown = null) => ({
+const makeCtx = (
+  role: string,
+  userId = `${role}-001`,
+  adminDb: unknown = null,
+  permissions = { allowVideo: false, allowAudit: false, systemLockout: false },
+) => ({
   userId,
   email: `${role}@test.com`,
   role,
   adminDb,
   db: adminDb,
   profile: { id: userId, email: `${role}@test.com`, full_name: role === 'director' ? 'The Director' : 'Alice', role, status: 'Online' },
+  permissions,
 });
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
@@ -217,10 +224,9 @@ describe('POST /api/voice-rooms', () => {
 
   it('employee with allow_video creates a room', async () => {
     const adminDb = makeAdminDb(insertSingle({ data: { id: 'r2', name: 'Design Review', room_code: 'kai-os-xyz', created_by: 'emp-001', is_active: true, max_participants: 20, created_at: '2026-01-01' }, error: null }));
-    _mockAuthCtx = makeCtx('employee', 'emp-001', adminDb);
-    const { authenticateRequest, getUserPermissions, writeAuditLog } = require('@/lib/server/auth');
+    _mockAuthCtx = makeCtx('employee', 'emp-001', adminDb, { allowVideo: true, allowAudit: false, systemLockout: false });
+    const { authenticateRequest, writeAuditLog } = require('@/lib/server/auth');
     (authenticateRequest as jest.Mock).mockResolvedValue(_mockAuthCtx);
-    (getUserPermissions as jest.Mock).mockResolvedValue({ allow_video: true });
     (writeAuditLog as jest.Mock).mockResolvedValue(undefined);
 
     const res = await POST(jsonPost('http://localhost/api/voice-rooms', { name: 'Design Review' }));
@@ -229,18 +235,17 @@ describe('POST /api/voice-rooms', () => {
 
   it('employee without allow_video gets 403', async () => {
     const adminDb = makeAdminDb();
-    _mockAuthCtx = makeCtx('employee', 'emp-002', adminDb);
-    const { authenticateRequest, getUserPermissions } = require('@/lib/server/auth');
+    _mockAuthCtx = makeCtx('employee', 'emp-002', adminDb, { allowVideo: false, allowAudit: false, systemLockout: false });
+    const { authenticateRequest } = require('@/lib/server/auth');
     (authenticateRequest as jest.Mock).mockResolvedValue(_mockAuthCtx);
-    (getUserPermissions as jest.Mock).mockResolvedValue({ allow_video: false });
 
     const res = await POST(jsonPost('http://localhost/api/voice-rooms', { name: 'Secret Room' }));
     expect(res.status).toBe(403);
   });
 
   it('returns 429 when rate limited', async () => {
-    const { rateLimit } = require('@/lib/security');
-    (rateLimit as jest.Mock).mockReturnValue({ allowed: false, remaining: 0, resetAt: Date.now() + 60_000 });
+    const { checkRateLimit } = require('@/lib/security');
+    (checkRateLimit as jest.Mock).mockResolvedValue({ allowed: false, remaining: 0, resetAt: Date.now() + 60_000 });
     _mockAuthCtx = makeCtx('director', 'director-001', makeAdminDb());
     const { authenticateRequest } = require('@/lib/server/auth');
     (authenticateRequest as jest.Mock).mockResolvedValue(_mockAuthCtx);
@@ -350,10 +355,9 @@ describe('POST /api/voice-rooms/[id]/join', () => {
       selectIs({ count: 3, error: null }),
       { upsert: jest.fn().mockResolvedValue({ error: null }) },
     );
-    _mockAuthCtx = makeCtx('employee', 'emp-001', adminDb);
-    const { authenticateRequest, getUserPermissions, writeAuditLog } = require('@/lib/server/auth');
+    _mockAuthCtx = makeCtx('employee', 'emp-001', adminDb, { allowVideo: true, allowAudit: false, systemLockout: false });
+    const { authenticateRequest, writeAuditLog } = require('@/lib/server/auth');
     (authenticateRequest as jest.Mock).mockResolvedValue(_mockAuthCtx);
-    (getUserPermissions as jest.Mock).mockResolvedValue({ allow_video: true });
     (writeAuditLog as jest.Mock).mockResolvedValue(undefined);
 
     const res = await JOIN(makeReq('http://localhost/api/voice-rooms/r1/join', { method: 'POST' }), { params: makeParams('r1') });
@@ -364,10 +368,9 @@ describe('POST /api/voice-rooms/[id]/join', () => {
 
   it('employee without allow_video gets 403', async () => {
     const adminDb = makeAdminDb();
-    _mockAuthCtx = makeCtx('employee', 'emp-002', adminDb);
-    const { authenticateRequest, getUserPermissions } = require('@/lib/server/auth');
+    _mockAuthCtx = makeCtx('employee', 'emp-002', adminDb, { allowVideo: false, allowAudit: false, systemLockout: false });
+    const { authenticateRequest } = require('@/lib/server/auth');
     (authenticateRequest as jest.Mock).mockResolvedValue(_mockAuthCtx);
-    (getUserPermissions as jest.Mock).mockResolvedValue({ allow_video: false });
 
     const res = await JOIN(makeReq('http://localhost/api/voice-rooms/r1/join', { method: 'POST' }), { params: makeParams('r1') });
     expect(res.status).toBe(403);

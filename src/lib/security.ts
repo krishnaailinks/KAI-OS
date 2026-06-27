@@ -1,5 +1,44 @@
 import { NextResponse } from "next/server";
 
+export const getClientIp = (req: Request): string =>
+  req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+
+/**
+ * Supabase-backed rate limiter — atomic, durable, multi-instance safe.
+ * Requires migration 006_rate_limit_counters.sql to be applied.
+ * Falls open (allows the request) when the DB check fails so an outage
+ * never locks out legitimate users.
+ */
+export const checkRateLimit = async (
+  key: string,
+  maxRequests = 60,
+  windowMs = 60_000,
+): Promise<{ allowed: boolean; remaining: number; resetAt: number }> => {
+  try {
+    const { getServiceSupabase } = await import("./server/supabase");
+    const db = getServiceSupabase();
+    type RateLimitRow = { allowed: boolean; remaining: number; reset_at: string };
+    type RateLimitResult = { data: RateLimitRow | null; error: { message: string } | null };
+    const { data, error } = (await db
+      .rpc("check_rate_limit", { p_key: key, p_max: maxRequests, p_window_ms: windowMs })
+      .single()) as unknown as RateLimitResult;
+
+    if (error || !data) {
+      console.error("[rate_limit] DB check failed, failing open:", error?.message);
+      return { allowed: true, remaining: maxRequests - 1, resetAt: Date.now() + windowMs };
+    }
+
+    return {
+      allowed: data.allowed,
+      remaining: data.remaining,
+      resetAt: new Date(data.reset_at).getTime(),
+    };
+  } catch (err) {
+    console.error("[rate_limit] unexpected error, failing open:", err);
+    return { allowed: true, remaining: maxRequests - 1, resetAt: Date.now() + windowMs };
+  }
+};
+
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 const CLEANUP_INTERVAL = 60_000;
@@ -49,6 +88,11 @@ export const rateLimitResponse = (resetAt: number) =>
     },
   );
 
+// CSRF TOKENS — retained for future use if cookie-based auth is ever added.
+// KAI-OS API routes authenticate via Authorization: Bearer <token> headers,
+// which browsers never send automatically on cross-origin requests.
+// CSRF attacks require automatic credential submission (cookies), so these
+// functions are intentionally not enforced in the current architecture.
 export const generateCsrfToken = (): string => {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -87,10 +131,12 @@ export function getLocalDate(tzOffsetMinutes?: string): string {
   if (tzOffsetMinutes === undefined) {
     return new Date().toISOString().split('T')[0];
   }
-  const offset = parseInt(tzOffsetMinutes, 10);
-  if (isNaN(offset)) {
+  const raw = parseInt(tzOffsetMinutes, 10);
+  if (isNaN(raw)) {
     return new Date().toISOString().split('T')[0];
   }
+  // Clamp to real-world timezone bounds: UTC-12 (−720 min) to UTC+14 (+840 min)
+  const offset = Math.max(-720, Math.min(840, raw));
   const local = new Date(Date.now() + offset * 60_000);
   return local.toISOString().split('T')[0];
 }

@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { authenticateRequest, jsonError, writeAuditLog, validateBody } from '@/lib/server/auth';
 import { taskUpdateSchema } from '@/lib/validation';
-import { rateLimit, rateLimitResponse } from '@/lib/security';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '@/lib/security';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`tasks-patch:${clientIp}`, 60, 60_000);
+    const rl = await checkRateLimit(`tasks-patch:${getClientIp(req)}`, 60, 60_000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     const { adminDb, role, userId } = await authenticateRequest(req);
@@ -69,36 +68,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     if (error) throw error;
 
-    await adminDb.from('task_history').insert([{
+    // History insert is non-critical: a failure here must not roll back the task update.
+    // Errors are logged server-side for ops visibility without surfacing to the user.
+    const { error: historyError } = await adminDb.from('task_history').insert([{
       task_id: id,
       agent_id: userId,
       action: historyAction,
       status: data.status,
     }]);
+    if (historyError) console.error('[task_history] insert failed for task', id, historyError.message);
 
     if (data.column_id === 'COMPLETED' && data.budget > 0) {
-      const { data: existingInvoice } = await adminDb
-        .from('invoices')
+      const { data: defaultClient } = await adminDb
+        .from('clients')
         .select('id')
-        .eq('task_id', id)
+        .limit(1)
         .maybeSingle();
 
-      if (!existingInvoice) {
-        const { data: defaultClient } = await adminDb
-          .from('clients')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
+      const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const { error: invoiceError } = await adminDb.from('invoices').insert([{
+        invoice_number: invoiceNumber,
+        task_id: id,
+        client_id: defaultClient?.id ?? null,
+        amount: data.budget,
+        status: 'unpaid',
+      }]);
 
-        const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-        await adminDb.from('invoices').insert([{
-          invoice_number: invoiceNumber,
-          task_id: id,
-          client_id: defaultClient?.id ?? null,
-          amount: data.budget,
-          status: 'unpaid',
-        }]);
+      // 23505 = unique_violation: a concurrent request already created the invoice.
+      // This is expected under concurrent completion — treat as a no-op.
+      if (invoiceError && invoiceError.code !== '23505') throw invoiceError;
 
+      if (!invoiceError) {
         await writeAuditLog(
           adminDb,
           'finance',

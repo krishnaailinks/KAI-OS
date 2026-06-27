@@ -45,13 +45,18 @@ describe('GET /api/health', () => {
     expect(body.memory).toBeDefined();
   });
 
-  it('returns 403 for non-director requesting ?detail=true', async () => {
+  it('falls through to public response for non-director requesting ?detail=true', async () => {
     const { requireDirector } = require('@/lib/server/auth');
     (requireDirector as jest.Mock).mockRejectedValue(
       Object.assign(new Error('Director clearance required'), { status: 403 }),
     );
 
+    // Route intentionally catches auth errors and falls through to the public response
+    // rather than revealing whether the requester was authenticated.
     const res = await GET(makeReq('/api/health?detail=true'));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('ok');
+    expect(body.uptime).toBeUndefined();
   });
 });

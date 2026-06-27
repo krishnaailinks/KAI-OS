@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authenticateRequest, jsonError, requireDirector, writeAuditLog, validateBody } from '@/lib/server/auth';
-import { rateLimit, rateLimitResponse, parsePagination } from '@/lib/security';
+import { checkRateLimit, getClientIp, rateLimitResponse, parsePagination } from '@/lib/security';
 import { z } from 'zod';
 
 const payrollExecuteSchema = z.object({
@@ -40,8 +40,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`payroll:${clientIp}`, 5, 60000);
+    const rl = await checkRateLimit(`payroll:${getClientIp(req)}`, 5, 60000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     const { adminDb, userId } = await requireDirector(req);
@@ -90,12 +89,24 @@ export async function POST(req: Request) {
     const now = new Date().toISOString();
     const payrollIds = payroll.map(row => row.id);
 
-    const { error: updateError } = await adminDb
+    // Conditional UPDATE: only touch rows still in Pending/Approved.
+    // If a concurrent request already executed payroll, those rows are already
+    // 'Paid' and this UPDATE will match 0 rows — detected below.
+    const { data: updatedRows, error: updateError } = await adminDb
       .from('payroll')
       .update({ status: 'Paid', updated_at: now })
-      .in('id', payrollIds);
+      .in('id', payrollIds)
+      .in('status', ['Pending', 'Approved'])
+      .select('id');
 
     if (updateError) throw updateError;
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json(
+        { error: 'Payroll was already executed by a concurrent request. No records updated.' },
+        { status: 409 },
+      );
+    }
 
     await writeAuditLog(
       adminDb,

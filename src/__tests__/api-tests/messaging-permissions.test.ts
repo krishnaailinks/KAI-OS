@@ -28,13 +28,18 @@ const mockAdminDb = {
   order: jest.fn().mockReturnThis(),
 };
 
-const makeCtx = (role: string, userId = `${role}-uuid`) => ({
+const makeCtx = (
+  role: string,
+  userId = `${role}-uuid`,
+  permissions = { allowVideo: false, allowAudit: false, systemLockout: false },
+) => ({
   userId,
   email: `${role}@test.com`,
   role,
   adminDb: mockAdminDb,
   db: mockAdminDb,
   profile: { id: userId, email: `${role}@test.com`, full_name: role, role, status: 'Online' },
+  permissions,
 });
 
 let mockCtx = makeCtx('director');
@@ -48,7 +53,6 @@ jest.mock('@/lib/server/auth', () => ({
     }
     return Promise.resolve(mockCtx);
   }),
-  getUserPermissions: jest.fn().mockResolvedValue({ allow_video: false, allow_audit: false, system_lockout: false }),
   jsonError: (err: unknown) => {
     const e = err as { status?: number; message?: string };
     return new Response(JSON.stringify({ error: e?.message || String(err) }), { status: e?.status || 500 });
@@ -66,7 +70,8 @@ jest.mock('@/lib/server/auth', () => ({
 }));
 
 jest.mock('@/lib/security', () => ({
-  rateLimit: jest.fn().mockReturnValue({ allowed: true, remaining: 29, resetAt: Date.now() + 60000 }),
+  getClientIp: jest.fn().mockReturnValue('test-ip'),
+  checkRateLimit: jest.fn().mockResolvedValue({ allowed: true, remaining: 29, resetAt: Date.now() + 60000 }),
   rateLimitResponse: jest.fn().mockReturnValue(new Response('Rate limited', { status: 429 })),
 }));
 
@@ -158,9 +163,7 @@ describe('POST /api/voice-rooms — requires allow_video', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('employee without allow_video gets 403', async () => {
-    mockCtx = makeCtx('employee');
-    const { getUserPermissions } = require('@/lib/server/auth');
-    (getUserPermissions as jest.Mock).mockResolvedValueOnce({ allow_video: false, allow_audit: false, system_lockout: false });
+    mockCtx = makeCtx('employee', 'employee-uuid', { allowVideo: false, allowAudit: false, systemLockout: false });
 
     const res = await POST_VOICE_ROOMS(postReq('http://localhost/api/voice-rooms', { name: 'Test Room' }));
     expect(res.status).toBe(403);
@@ -185,8 +188,8 @@ describe('Rate limiting enforcement', () => {
 
   it('messages route respects rate limit', async () => {
     mockCtx = makeCtx('employee');
-    const { rateLimit } = require('@/lib/security');
-    (rateLimit as jest.Mock).mockReturnValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000 });
+    const { checkRateLimit } = require('@/lib/security');
+    (checkRateLimit as jest.Mock).mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000 });
 
     const res = await POST_MESSAGES(postReq('http://localhost/api/messages', { body: 'spam', channel_id: 'general' }));
     expect(res.status).toBe(429);
@@ -194,8 +197,8 @@ describe('Rate limiting enforcement', () => {
 
   it('channels route respects rate limit', async () => {
     mockCtx = makeCtx('director');
-    const { rateLimit } = require('@/lib/security');
-    (rateLimit as jest.Mock).mockReturnValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000 });
+    const { checkRateLimit } = require('@/lib/security');
+    (checkRateLimit as jest.Mock).mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000 });
 
     const res = await POST_CHANNELS(postReq('http://localhost/api/channels', { name: 'test' }));
     expect(res.status).toBe(429);

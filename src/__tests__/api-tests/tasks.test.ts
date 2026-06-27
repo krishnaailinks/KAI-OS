@@ -11,7 +11,8 @@ jest.mock('@/lib/server/auth', () => ({
 }));
 
 jest.mock('@/lib/security', () => ({
-  rateLimit: jest.fn().mockReturnValue({ allowed: true, remaining: 29, resetAt: Date.now() + 60000 }),
+  getClientIp: jest.fn().mockReturnValue('test-ip'),
+  checkRateLimit: jest.fn().mockResolvedValue({ allowed: true, remaining: 29, resetAt: Date.now() + 60000 }),
   parsePagination: jest.fn().mockReturnValue({ limit: 50, page: 1, from: 0, to: 49 }),
 }));
 

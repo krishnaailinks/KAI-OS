@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authenticateRequest, HttpError, jsonError, validateBody, writeAuditLog } from '@/lib/server/auth';
 import { messageSchema } from '@/lib/validation';
-import { rateLimit, rateLimitResponse } from '@/lib/security';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
@@ -39,8 +39,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`messages:${clientIp}`, 30, 60_000);
+    const rl = await checkRateLimit(`messages:${getClientIp(req)}`, 30, 60_000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     const { adminDb, userId, profile, role } = await authenticateRequest(req);

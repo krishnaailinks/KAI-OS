@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { rateLimit, rateLimitResponse, generateCsrfToken, validateCsrfToken, safeRedirect, getLocalDate, parsePagination } from '@/lib/security';
+import { rateLimit, rateLimitResponse, generateCsrfToken, validateCsrfToken, safeRedirect, getLocalDate, parsePagination, getClientIp } from '@/lib/security';
 
 describe('rateLimit', () => {
   const key = 'test-key';
@@ -140,6 +140,23 @@ describe('getLocalDate', () => {
     const date = getLocalDate('abc');
     const utcDate = new Date().toISOString().split('T')[0];
     expect(date).toBe(utcDate);
+  });
+});
+
+describe('getClientIp', () => {
+  const makeReq = (headers: Record<string, string>) =>
+    new Request('http://localhost/', { headers });
+
+  it('returns x-forwarded-for when present', () => {
+    expect(getClientIp(makeReq({ 'x-forwarded-for': '1.2.3.4' }))).toBe('1.2.3.4');
+  });
+
+  it('falls back to x-real-ip when x-forwarded-for is absent', () => {
+    expect(getClientIp(makeReq({ 'x-real-ip': '5.6.7.8' }))).toBe('5.6.7.8');
+  });
+
+  it('returns "unknown" when no IP headers are present', () => {
+    expect(getClientIp(makeReq({}))).toBe('unknown');
   });
 });
 

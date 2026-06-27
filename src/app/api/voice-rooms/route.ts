@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import {
   authenticateRequest,
-  getUserPermissions,
   HttpError,
   jsonError,
   validateBody,
   writeAuditLog,
 } from '@/lib/server/auth';
 import { voiceRoomCreateSchema } from '@/lib/validation';
-import { rateLimit, rateLimitResponse } from '@/lib/security';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
@@ -47,18 +46,15 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`voice-rooms:create:${clientIp}`, 30, 60_000);
+    const rl = await checkRateLimit(`voice-rooms:create:${getClientIp(req)}`, 30, 60_000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
-    const { adminDb, userId, role, profile } = await authenticateRequest(req);
+    const { adminDb, userId, role, profile, permissions } = await authenticateRequest(req);
 
-    // allow_video permission gates meeting room creation (directors always allowed)
-    if (role !== 'director') {
-      const perms = await getUserPermissions(adminDb, userId);
-      if (!perms.allow_video) {
-        throw new HttpError(403, 'Video meeting access has not been granted for your account. Contact your director.');
-      }
+    // allow_video permission gates meeting room creation (directors always allowed).
+    // permissions.allowVideo is fetched as part of the auth join — no extra DB call.
+    if (role !== 'director' && !permissions.allowVideo) {
+      throw new HttpError(403, 'Video meeting access has not been granted for your account. Contact your director.');
     }
 
     const rawBody = await req.json().catch(() => ({}));
