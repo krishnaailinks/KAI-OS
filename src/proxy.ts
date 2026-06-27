@@ -19,11 +19,14 @@ const CSP_HEADER = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.supabase.co https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com",
+  "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://meet.jit.si",
   "font-src 'self' https://fonts.gstatic.com",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io",
-  "frame-src 'self' https://*.supabase.co https://challenges.cloudflare.com",
-  "media-src 'self'",
+  // meet.jit.si uses WebSocket signalling (wss://) and HTTPS API calls
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://meet.jit.si wss://meet.jit.si",
+  // meet.jit.si must be in frame-src or the iframe is blocked before it even loads
+  "frame-src 'self' https://*.supabase.co https://challenges.cloudflare.com https://meet.jit.si",
+  // blob: is required for WebRTC MediaStream object URLs in the parent frame
+  "media-src 'self' blob: mediastream:",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -36,15 +39,28 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-Frame-Options": "DENY",
   "X-XSS-Protection": "0",
   "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+  // Allow camera/mic for our page (self) AND for the Jitsi Meet iframe (meet.jit.si).
+  // The previous camera=() / microphone=() completely blocked device access site-wide,
+  // which prevented any video or voice call from working even inside the iframe.
+  "Permissions-Policy": 'camera=(self "https://meet.jit.si"), microphone=(self "https://meet.jit.si"), display-capture=(self "https://meet.jit.si"), geolocation=(), interest-cohort=()',
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
 };
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/_next") || pathname.startsWith("/api") || pathname.startsWith("/static") || pathname === "/favicon.ico") {
+  if (pathname.startsWith("/_next") || pathname.startsWith("/static") || pathname === "/favicon.ico") {
     return NextResponse.next();
+  }
+
+  // Apply security headers to API routes but skip auth/routing logic
+  if (pathname.startsWith("/api")) {
+    const apiResponse = NextResponse.next();
+    Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
+      apiResponse.headers.set(key, value);
+    });
+    apiResponse.headers.set("Content-Security-Policy", CSP_HEADER);
+    return apiResponse;
   }
 
   const response = NextResponse.next();

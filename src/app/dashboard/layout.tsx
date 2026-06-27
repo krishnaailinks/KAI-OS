@@ -11,22 +11,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        // Unauthenticated access attempt - redirect to login
-        router.push("/login");
-      } else {
-        setIsAuthenticated(true);
-      }
-    };
-
-    checkAuth();
-
-    // Listen for auth state changes (e.g., if user logs out from another tab)
+    // onAuthStateChange fires synchronously with INITIAL_SESSION on mount,
+    // so it is more reliable than getSession() which can lose the in-memory
+    // session on client-side navigation before the storage adapter catches up.
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
+      if (session) {
+        setIsAuthenticated(true);
+      } else {
         router.push("/login");
       }
     });

@@ -24,12 +24,14 @@ export async function GET(req: Request) {
       .from('team_messages')
       .select('id, channel_id, user_id, author_name, body, created_at')
       .eq('channel_id', channelSlug)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(100);
 
     if (error) throw error;
 
-    return NextResponse.json({ messages: data || [] });
+    // Return in ascending order so UI renders oldest→newest; but we fetched
+    // newest-first so the LIMIT always catches the most recent 100 messages.
+    return NextResponse.json({ messages: (data || []).reverse() });
   } catch (err: unknown) {
     return jsonError(err);
   }

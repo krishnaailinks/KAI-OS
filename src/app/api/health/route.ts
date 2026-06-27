@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
-  // ?detail=true requires director auth and returns internal metrics.
+  // ?detail=true returns extended metrics for directors; falls through to public response if unauthorized.
   if (searchParams.get('detail') === 'true') {
     try {
       await requireDirector(req);
@@ -24,8 +24,8 @@ export async function GET(req: Request) {
         },
         timestamp: new Date().toISOString(),
       });
-    } catch (err) {
-      return jsonError(err);
+    } catch {
+      // Not authorized — fall through to public-only response below
     }
   }
 

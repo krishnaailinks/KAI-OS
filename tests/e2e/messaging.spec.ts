@@ -12,7 +12,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function goToLogin(page: Page) {
   await page.goto('/login');
-  await expect(page.locator('input[type="email"]').first()).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('input[placeholder*="Email"], input[placeholder*="Personnel"], input[type="email"]').first()).toBeVisible({ timeout: 8000 });
 }
 
 // ─── Unauthenticated / Route Protection ───────────────────────────────────────
@@ -37,7 +37,7 @@ test.describe('Login page structure', () => {
   });
 
   test('shows email and password fields', async ({ page }) => {
-    await expect(page.locator('input[type="email"]').first()).toBeVisible();
+    await expect(page.locator('input[placeholder*="Email"], input[placeholder*="Personnel"], input[type="email"]').first()).toBeVisible();
     await expect(page.locator('input[type="password"]').first()).toBeVisible();
   });
 
@@ -49,7 +49,7 @@ test.describe('Login page structure', () => {
   test('shows error on empty form submit', async ({ page }) => {
     await page.locator('button[type="submit"]').first().click();
     // Browser native or custom validation
-    const emailInput = page.locator('input[type="email"]').first();
+    const emailInput = page.locator('input[placeholder*="Email"], input[placeholder*="Personnel"], input[type="email"]').first();
     const validationMessage = await emailInput.evaluate((el) =>
       (el as HTMLInputElement).validationMessage,
     );
@@ -57,7 +57,7 @@ test.describe('Login page structure', () => {
   });
 
   test('shows error for invalid credentials', async ({ page }) => {
-    await page.locator('input[type="email"]').first().fill('wrong@example.com');
+    await page.locator('input[placeholder*="Email"], input[placeholder*="Personnel"], input[type="email"]').first().fill('wrong@example.com');
     await page.locator('input[type="password"]').first().fill('BadPass123!');
     await page.locator('button[type="submit"]').first().click();
     await page.waitForTimeout(2500);

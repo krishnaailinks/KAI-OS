@@ -20,7 +20,10 @@ export async function GET(req: Request) {
 
     let query = adminDb.from('daily_reports').select('*', { count: 'exact' });
     
-    if (fetchAll && role === 'director') {
+    if (fetchAll) {
+      if (role !== 'director') {
+        return NextResponse.json({ error: 'Director clearance required' }, { status: 403 });
+      }
       if (startDate && endDate) {
         if (!isValidDateParam(startDate) || !isValidDateParam(endDate)) {
           return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD.' }, { status: 400 });
@@ -36,7 +39,10 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ reports: reports || [], total: count ?? reports?.length ?? 0 });
+    if (fetchAll) {
+      return NextResponse.json({ reports: reports || [], total: count ?? reports?.length ?? 0 });
+    }
+    return NextResponse.json({ report: reports?.[0] ?? null });
   } catch (err: unknown) {
     return jsonError(err);
   }

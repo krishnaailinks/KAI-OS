@@ -77,6 +77,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState<ActiveMeeting | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
 
   const verifyLockPassword = async () => {
     if (!lockPassword) return;
@@ -116,7 +117,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
     const verifyRole = async () => {
       const res = await apiFetch('/api/me');
       if (!res.ok) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         router.replace('/login');
         return;
       }
@@ -216,15 +217,18 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         currentUserId = session.user.id;
+        setCurrentUserId(session.user.id);
         try {
           const res = await apiFetch('/api/permissions');
           if (res.ok) {
             const data = await res.json();
-            if (data.permissions) {
+            // Directors get an array of all profiles; skip for them (defaults are correct)
+            const perms = data.permissions;
+            if (perms && !Array.isArray(perms)) {
               setPermissions({
-                allowVideo: data.permissions.allow_video ?? false,
-                allowAudit: data.permissions.allow_audit ?? false,
-                systemLockout: data.permissions.system_lockout ?? false
+                allowVideo: perms.allow_video ?? false,
+                allowAudit: perms.allow_audit ?? false,
+                systemLockout: perms.system_lockout ?? false
               });
             }
           }
@@ -383,7 +387,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
   }, []);
 
   const handleLogout = () => {
-    supabase.auth.signOut();
+    supabase.auth.signOut({ scope: 'local' });
     router.push("/login");
   };
 
@@ -463,6 +467,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
             <TeamMessaging
               permissions={permissions}
               role={role as "director" | "employee" | "client"}
+              currentUserId={currentUserId}
               onJoinMeeting={(roomCode, roomName, roomId) => {
                 setActiveMeeting({ roomCode, roomName, roomId });
                 setActiveTab("LIVE_MEETING");
@@ -553,7 +558,8 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({ role }) 
                     <LayoutDashboard className="w-4 h-4" /> Dashboard
                   </button>
                   
-                  <button 
+                  <button
+                    data-testid="nav-team-hub"
                     onClick={() => setActiveTab("TEAM_CHAT")}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-lg transition-all ${
                       activeTab === "TEAM_CHAT" ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50"

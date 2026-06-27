@@ -9,14 +9,14 @@ test.describe('KAI-OS Authentication Flow', () => {
   test('login page loads correctly', async ({ page }) => {
     await page.goto('/login');
     await expect(page.locator('h1, h2, h3').first()).toBeVisible();
-    await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible();
+    await expect(page.locator('input[type="text"], input[type="email"], input[name="email"]').first()).toBeVisible();
     await expect(page.locator('input[type="password"], input[name="password"]').first()).toBeVisible();
   });
 
   test('shows error for invalid credentials', async ({ page }) => {
     await page.goto('/login');
-    
-    const emailInput = page.locator('input[type="email"], input[name="email"]').first();
+
+    const emailInput = page.locator('input[type="text"], input[type="email"], input[name="email"]').first();
     const passwordInput = page.locator('input[type="password"], input[name="password"]').first();
     const submitButton = page.locator('button[type="submit"]').first();
 

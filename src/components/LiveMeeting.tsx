@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Video, VideoOff, PhoneOff, Plus, Users, X } from "lucide-react";
 import type { SystemPermissions } from "../types/dashboard";
 import { apiFetch } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 
 interface VoiceRoomParticipant {
   user_id: string;
@@ -48,11 +49,51 @@ export const LiveMeeting: React.FC<LiveMeetingProps> = ({
   const [showCreate, setShowCreate] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [creating, setCreating] = useState(false);
+  // Cache the auth token so we can send a leave beacon on page unload.
+  const sessionTokenRef = useRef<string | null>(null);
+  // Keep a ref to currentMeeting so the unload handler always sees the latest value.
+  const currentMeetingRef = useRef<ActiveMeeting | null>(activeMeeting ?? null);
 
   // Sync prop-driven join (from TeamMessaging sidebar)
   useEffect(() => {
-    if (activeMeeting) setCurrentMeeting(activeMeeting);
+    if (activeMeeting) {
+      setCurrentMeeting(activeMeeting);
+      currentMeetingRef.current = activeMeeting;
+    }
   }, [activeMeeting]);
+
+  // Keep the session token cached so unload handler can use it synchronously.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      sessionTokenRef.current = data.session?.access_token ?? null;
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      sessionTokenRef.current = session?.access_token ?? null;
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Keep the ref in sync so the unload handler always has the latest roomId.
+  useEffect(() => {
+    currentMeetingRef.current = currentMeeting;
+  }, [currentMeeting]);
+
+  // Clean up participant record when the user closes the tab or navigates away.
+  // fetch with keepalive:true fires even as the page unloads.
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const meeting = currentMeetingRef.current;
+      const token = sessionTokenRef.current;
+      if (!meeting?.roomId || !token) return;
+      fetch(`/api/voice-rooms/${meeting.roomId}/leave`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true,
+      });
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   const fetchRooms = useCallback(async () => {
     const res = await apiFetch("/api/voice-rooms").catch(() => null);
@@ -74,11 +115,13 @@ export const LiveMeeting: React.FC<LiveMeetingProps> = ({
     }).catch(() => null);
     if (res?.ok) {
       const data = await res.json();
-      setCurrentMeeting({
+      const meeting = {
         roomCode: data.room_code,
         roomName: data.room_name,
         roomId: data.room_id,
-      });
+      };
+      setCurrentMeeting(meeting);
+      currentMeetingRef.current = meeting;
       fetchRooms();
     }
   };
@@ -90,6 +133,7 @@ export const LiveMeeting: React.FC<LiveMeetingProps> = ({
       }).catch(() => {});
     }
     setCurrentMeeting(null);
+    currentMeetingRef.current = null;
     onLeaveMeeting?.();
     fetchRooms();
   };
@@ -111,11 +155,13 @@ export const LiveMeeting: React.FC<LiveMeetingProps> = ({
       }).catch(() => null);
       if (joinRes?.ok) {
         const data = await joinRes.json();
-        setCurrentMeeting({
+        const meeting = {
           roomCode: data.room_code,
           roomName: data.room_name,
           roomId: data.room_id,
-        });
+        };
+        setCurrentMeeting(meeting);
+        currentMeetingRef.current = meeting;
         setShowCreate(false);
         setNewRoomName("");
         fetchRooms();

@@ -31,8 +31,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
-    if (role !== 'director' && existingTask.assignee_id !== userId) {
-      return NextResponse.json({ error: 'Forbidden: you are not assigned to this task' }, { status: 403 });
+    if (role === 'client') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     let dbUpdates: Record<string, unknown> = {};
@@ -90,36 +90,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           .limit(1)
           .maybeSingle();
 
-        if (defaultClient) {
-          const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-          await adminDb.from('invoices').insert([{
-            invoice_number: invoiceNumber,
-            task_id: id,
-            client_id: defaultClient.id,
-            amount: data.budget,
-            status: 'unpaid',
-          }]);
+        const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await adminDb.from('invoices').insert([{
+          invoice_number: invoiceNumber,
+          task_id: id,
+          client_id: defaultClient?.id ?? null,
+          amount: data.budget,
+          status: 'unpaid',
+        }]);
 
-          await writeAuditLog(
-            adminDb,
-            'finance',
-            `[FMS] Auto-generated ${invoiceNumber} ($${data.budget}) for task ${id}`,
-            userId,
-            'medium',
-          );
-        } else {
-          await writeAuditLog(
-            adminDb,
-            'finance',
-            `[FMS] Invoice skipped for task ${id} — no client record found in system. Add a client first.`,
-            userId,
-            'high',
-          );
-        }
+        await writeAuditLog(
+          adminDb,
+          'finance',
+          `[FMS] Auto-generated ${invoiceNumber} ($${data.budget}) for task ${id}`,
+          userId,
+          'medium',
+        );
       }
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ task: data });
   } catch (err: unknown) {
     return jsonError(err);
   }

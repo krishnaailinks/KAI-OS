@@ -19,20 +19,29 @@ export async function GET(req: Request) {
 
     const today = getLocalDate(tz ?? undefined);
 
-    if (fetchAll && role === 'director') {
+    if (fetchAll) {
+      if (role !== 'director') {
+        return NextResponse.json({ error: 'Director clearance required' }, { status: 403 });
+      }
       let query = adminDb.from('attendance_logs').select('*', { count: 'exact' });
-      
-      if (startDate && endDate) {
-        if (!isValidDateParam(startDate) || !isValidDateParam(endDate)) {
+
+      if (startDate) {
+        if (!isValidDateParam(startDate)) {
           return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD.' }, { status: 400 });
         }
-        query = query.gte('date', startDate).lte('date', endDate);
+        query = query.gte('date', startDate);
       }
-      
+      if (endDate) {
+        if (!isValidDateParam(endDate)) {
+          return NextResponse.json({ error: 'Invalid date format. Use YYYY-MM-DD.' }, { status: 400 });
+        }
+        query = query.lte('date', endDate);
+      }
+
       const { from, to } = parsePagination(searchParams, 50, 200);
       const { data: allAttendance, error: allErr, count } = await query.order('date', { ascending: false }).range(from, to);
       if (allErr) throw allErr;
-      return NextResponse.json({ attendance: allAttendance || [], total: count ?? allAttendance?.length ?? 0 });
+      return NextResponse.json({ logs: allAttendance || [], total: count ?? allAttendance?.length ?? 0 });
     }
 
     // Default: Get today's attendance for the logged-in user
@@ -45,7 +54,7 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ attendance });
+    return NextResponse.json({ log: attendance });
   } catch (err: unknown) {
     return jsonError(err);
   }
@@ -105,7 +114,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ attendance: result });
+    return NextResponse.json({ log: result }, { status: 201 });
   } catch (err: unknown) {
     return jsonError(err);
   }

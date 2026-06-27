@@ -38,7 +38,7 @@ export default function RegisterPage() {
   };
 
   const getStrengthLabel = () => {
-    if (strength === 0) return "None";
+    if (!password) return "None";
     if (strength <= 25) return "Weak";
     if (strength <= 50) return "Fair";
     if (strength <= 75) return "Good";
@@ -169,7 +169,8 @@ export default function RegisterPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all sm:text-sm"
-                    placeholder="John Doe"
+                    name="name"
+                    placeholder="Enter your full name"
                   />
                 </div>
               </div>
@@ -210,7 +211,7 @@ export default function RegisterPage() {
                         value={accessCode}
                         onChange={(e) => setAccessCode(e.target.value)}
                         className="block w-full pl-10 pr-3 py-2.5 border border-amber-300 dark:border-amber-800/50 rounded-lg bg-amber-50 dark:bg-amber-900/10 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all sm:text-sm"
-                        placeholder="Secret Key"
+                        placeholder="Director Access Code"
                       />
                     </div>
                   </motion.div>

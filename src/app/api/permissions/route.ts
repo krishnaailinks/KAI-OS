@@ -43,7 +43,7 @@ export async function GET(req: Request) {
         .range(from, to) as { data: ProfileWithPermissions[] | null; error: unknown; count: number | null };
 
       if (error) throw error;
-      return NextResponse.json({ profiles: data, total: count ?? data?.length ?? 0 });
+      return NextResponse.json({ profiles: data, permissions: data, total: count ?? data?.length ?? 0 });
     }
 
     const { data, error } = await adminDb

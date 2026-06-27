@@ -71,7 +71,7 @@ KAI-OS is a full-featured enterprise management console built for **Krishna AI L
 - **PWA** via `@ducanh2912/next-pwa` for offline-capable progressive web app
 - **Docker** multi-stage build for production deployments
 - **Sentry** for error monitoring and performance tracking
-- **Google Gemini** for AI-powered task priority/tool tagging
+- **Google Gemini 2.0 Flash** for AI-powered task priority/tool tagging
 
 ---
 
@@ -115,7 +115,7 @@ KAI-OS is a full-featured enterprise management console built for **Krishna AI L
 | Database           | PostgreSQL (via Supabase)                          |
 | Auth               | Supabase Auth (JWT) + Row Level Security           |
 | Validation         | Zod v4                                             |
-| AI                 | Google Generative AI (Gemini 1.5 Flash)            |
+| AI                 | Google Generative AI (Gemini 2.0 Flash)            |
 | Error Tracking     | Sentry                                             |
 | PWA                | @ducanh2912/next-pwa                               |
 | Testing            | Jest, Playwright, Testing Library                  |
@@ -136,7 +136,7 @@ KAI-OS is a full-featured enterprise management console built for **Krishna AI L
 ### Clone & Install
 
 ```bash
-git clone https://github.com/krishna-ai-links/kai-os.git
+git clone https://github.com/krishnaailinks/KAI-OS.git
 cd kai-os
 npm install
 ```
@@ -230,7 +230,7 @@ kai-os/
 │   │   │   └── supabase.ts  # Supabase client factories
 │   │   ├── security.ts      # Rate limiting, CSRF, pagination, local date helpers
 │   │   └── validation.ts    # Zod schemas for all API request bodies
-│   ├── middleware.ts         # Supabase SSR middleware + security headers + CSP
+│   ├── proxy.ts              # Next.js middleware proxy + security headers + CSP
 │   └── types/
 │       └── dashboard.ts     # TypeScript type definitions
 ├── tests/                   # E2E tests (Playwright)
@@ -249,7 +249,32 @@ kai-os/
 
 ## Deployment
 
-See [docs/deployment.md](docs/deployment.md) for detailed instructions on:
+### Vercel (Recommended)
+
+1. Push to GitHub
+2. Import project on [vercel.com](https://vercel.com)
+3. Add environment variables (see below)
+4. Deploy — auto-builds on every push
+
+### Environment Variables (Vercel)
+
+Go to **Vercel Dashboard → Project → Settings → Environment Variables → Production** and set:
+
+| Variable | Value | Description |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://vkmhayiyrybovmyerhje.supabase.co` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_NTV0o_GGH4cqbbk0HVCUkw_6i92nzBk` | Supabase anon (public) key |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJhbGci...` (full key in .env.local) | Service role key — server only |
+| `GEMINI_API_KEY` | `AIzaSyCZYYIBg1PTBwGH4U8l2YUOuFrV5RF35r4` | Google Gemini for AI tagging |
+| `DIRECTOR_REGISTRATION_CODE` | `kai-admin-2026` | Secret code for director sign-up |
+| `SENTRY_AUTH_TOKEN` | `sntrys_eyJpYXQi...` (full token in .env.local) | Sentry source map uploads |
+| `NEXT_PUBLIC_SITE_URL` | `https://kai-os-lake.vercel.app` | Production URL for OG images |
+
+> After adding variables, hit **Redeploy** to apply.
+
+### Other Options
+
+See [docs/deployment.md](docs/deployment.md) for:
 
 - **Docker** — Build and run with `docker-compose`
 - **Hostinger cPanel** — Deploy via Node.js app with Phusion Passenger using `server.js`

@@ -48,7 +48,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rl = rateLimit(`voice-rooms:create:${clientIp}`, 5, 60_000);
+    const rl = rateLimit(`voice-rooms:create:${clientIp}`, 30, 60_000);
     if (!rl.allowed) return rateLimitResponse(rl.resetAt);
 
     const { adminDb, userId, role, profile } = await authenticateRequest(req);

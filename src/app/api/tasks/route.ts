@@ -93,7 +93,7 @@ export async function POST(req: Request) {
 
     await writeAuditLog(adminDb, 'task', `Task ${data.id} created`, userId, 'low');
 
-    return NextResponse.json(data);
+    return NextResponse.json({ task: data }, { status: 201 });
   } catch (err) {
     return jsonError(err);
   }

@@ -58,6 +58,7 @@ interface TeamMessagingProps {
   permissions: SystemPermissions;
   role: "director" | "employee" | "client";
   onJoinMeeting?: (roomCode: string, roomName: string, roomId: string) => void;
+  currentUserId?: string;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ export const TeamMessaging: React.FC<TeamMessagingProps> = ({
   permissions,
   role,
   onJoinMeeting,
+  currentUserId,
 }) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [voiceRooms, setVoiceRooms] = useState<VoiceRoom[]>([]);
@@ -118,6 +120,13 @@ export const TeamMessaging: React.FC<TeamMessagingProps> = ({
 
   useEffect(() => {
     fetchChannels();
+    const rtCh = supabase
+      .channel('channels_list')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'channels' }, () => fetchChannels())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'channels' }, () => fetchChannels())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'channels' }, () => fetchChannels())
+      .subscribe();
+    return () => { supabase.removeChannel(rtCh); };
   }, [fetchChannels]);
 
   // ── Fetch voice rooms (poll every 10 s for presence) ───────────────────────
@@ -298,6 +307,7 @@ export const TeamMessaging: React.FC<TeamMessagingProps> = ({
             collapsed={textCollapsed}
             onToggle={() => setTextCollapsed((v) => !v)}
             onAdd={role === "director" ? () => setShowAddChannel(true) : undefined}
+            addTestId="add-channel-btn"
           >
             {textChannels.map((ch) => (
               <ChannelRow
@@ -340,6 +350,7 @@ export const TeamMessaging: React.FC<TeamMessagingProps> = ({
             collapsed={voiceCollapsed}
             onToggle={() => setVoiceCollapsed((v) => !v)}
             onAdd={permissions.allowVideo ? () => setShowCreateRoom(true) : undefined}
+            addTestId="add-voice-room-btn"
           >
             {voiceRooms.length === 0 && (
               <p className="text-xs text-slate-400 px-2.5 py-1">
@@ -352,6 +363,7 @@ export const TeamMessaging: React.FC<TeamMessagingProps> = ({
                 room={room}
                 role={role}
                 canJoin={permissions.allowVideo}
+                currentUserId={currentUserId}
                 onJoin={() => handleJoinRoom(room)}
                 onEnd={() => handleEndRoom(room)}
               />
@@ -463,6 +475,7 @@ export const TeamMessaging: React.FC<TeamMessagingProps> = ({
                 <Paperclip className="w-4 h-4" />
               </button>
               <input
+                data-testid="msg-input"
                 type="text"
                 placeholder={
                   permissions.systemLockout
@@ -634,6 +647,7 @@ interface SidebarSectionProps {
   collapsed: boolean;
   onToggle: () => void;
   onAdd?: () => void;
+  addTestId?: string;
   children: React.ReactNode;
 }
 
@@ -642,6 +656,7 @@ const SidebarSection: React.FC<SidebarSectionProps> = ({
   collapsed,
   onToggle,
   onAdd,
+  addTestId,
   children,
 }) => (
   <div>
@@ -661,6 +676,7 @@ const SidebarSection: React.FC<SidebarSectionProps> = ({
       </button>
       {onAdd && (
         <button
+          data-testid={addTestId}
           onClick={(e) => {
             e.stopPropagation();
             onAdd();
@@ -693,6 +709,7 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
 }) => (
   <div className="group relative">
     <button
+      data-testid={`channel-btn-${channel.slug}`}
       onClick={onClick}
       className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-all ${
         isActive
@@ -726,6 +743,7 @@ interface VoiceRoomRowProps {
   room: VoiceRoom;
   role: string;
   canJoin: boolean;
+  currentUserId?: string;
   onJoin: () => void;
   onEnd: () => void;
 }
@@ -734,10 +752,20 @@ const VoiceRoomRow: React.FC<VoiceRoomRowProps> = ({
   room,
   role,
   canJoin,
+  currentUserId,
   onJoin,
   onEnd,
-}) => (
-  <div className="group px-2.5 py-2 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all">
+}) => {
+  // Only the room creator or a director may end the meeting.
+  // Previously the condition was `room.created_by` (always truthy for a UUID
+  // string), so every user saw the End button regardless of ownership.
+  const canEnd = role === "director" || (!!currentUserId && room.created_by === currentUserId);
+
+  return (
+  <div
+    data-testid={`voice-room-row-${room.id}`}
+    className="group px-2.5 py-2 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-all"
+  >
     <div className="flex items-center gap-2">
       <Volume2 className="w-4 h-4 text-green-500 flex-shrink-0" />
       <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate flex-1">
@@ -746,13 +774,14 @@ const VoiceRoomRow: React.FC<VoiceRoomRowProps> = ({
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
         {canJoin && (
           <button
+            data-testid={`voice-room-join-${room.id}`}
             onClick={onJoin}
             className="text-[11px] font-bold px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors"
           >
             Join
           </button>
         )}
-        {(role === "director" || room.created_by) && (
+        {canEnd && (
           <button
             onClick={onEnd}
             className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
@@ -783,7 +812,8 @@ const VoiceRoomRow: React.FC<VoiceRoomRowProps> = ({
       </div>
     )}
   </div>
-);
+  );
+};
 
 interface MessageBubbleProps {
   message: TeamMessage;

@@ -9,7 +9,7 @@ export async function GET(req: Request) {
 
     const { data, error } = await adminDb
       .from('channels')
-      .select('id, name, slug, type, description, created_by, created_at')
+      .select('id, name, slug, type, description, created_by, created_at, is_archived')
       .eq('is_archived', false)
       .order('created_at', { ascending: true });
 
