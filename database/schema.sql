@@ -225,6 +225,17 @@ CREATE TABLE IF NOT EXISTS public.system_audit_logs (
   severity TEXT NOT NULL DEFAULT 'low' CHECK (severity IN ('low', 'medium', 'high', 'critical'))
 );
 
+CREATE TABLE IF NOT EXISTS public.director_invites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token TEXT UNIQUE NOT NULL,
+  email TEXT NOT NULL,
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  used BOOLEAN NOT NULL DEFAULT FALSE,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON public.tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_column_id ON public.tasks(column_id);
 CREATE INDEX IF NOT EXISTS idx_task_history_task_id ON public.task_history(task_id);
@@ -241,6 +252,9 @@ CREATE INDEX IF NOT EXISTS idx_voice_rooms_active ON public.voice_rooms(is_activ
 CREATE INDEX IF NOT EXISTS idx_vrp_room   ON public.voice_room_participants(room_id);
 CREATE INDEX IF NOT EXISTS idx_vrp_user   ON public.voice_room_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_vrp_active ON public.voice_room_participants(room_id) WHERE left_at IS NULL;
+
+-- Invite index
+CREATE INDEX IF NOT EXISTS idx_director_invites_token ON public.director_invites(token);
 
 -- Performance indexes identified as missing in audit (2026-06-24)
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee_id ON public.tasks(assignee_id);
@@ -270,7 +284,8 @@ BEGIN
     'voice_rooms',
     'voice_room_participants',
     'team_messages',
-    'system_audit_logs'
+    'system_audit_logs',
+    'director_invites'
   ]
   LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
@@ -379,6 +394,11 @@ DROP POLICY IF EXISTS audit_logs_insert_authenticated ON public.system_audit_log
 CREATE POLICY audit_logs_select_director ON public.system_audit_logs FOR SELECT TO authenticated USING (public.is_director());
 CREATE POLICY audit_logs_insert_authenticated ON public.system_audit_logs FOR INSERT TO authenticated WITH CHECK (triggered_by = auth.uid()::TEXT OR public.is_director());
 
+DROP POLICY IF EXISTS director_invites_select ON public.director_invites;
+DROP POLICY IF EXISTS director_invites_insert ON public.director_invites;
+CREATE POLICY director_invites_select ON public.director_invites FOR SELECT TO authenticated USING (public.is_director());
+CREATE POLICY director_invites_insert ON public.director_invites FOR INSERT TO authenticated WITH CHECK (public.is_director() AND auth.uid() = created_by);
+
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
@@ -408,6 +428,8 @@ DROP TRIGGER IF EXISTS touch_payroll_updated_at ON public.payroll;
 CREATE TRIGGER touch_payroll_updated_at BEFORE UPDATE ON public.payroll FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
 DROP TRIGGER IF EXISTS touch_channels_updated_at ON public.channels;
 CREATE TRIGGER touch_channels_updated_at BEFORE UPDATE ON public.channels FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
+DROP TRIGGER IF EXISTS touch_director_invites_updated_at ON public.director_invites;
+CREATE TRIGGER touch_director_invites_updated_at BEFORE UPDATE ON public.director_invites FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
 
 -- ─── Supabase Realtime ────────────────────────────────────────────────────────
 -- Enable REPLICA IDENTITY FULL so Realtime sends the complete row for every

@@ -9,11 +9,20 @@ export const getClientIp = (req: Request): string =>
  * Falls open (allows the request) when the DB check fails so an outage
  * never locks out legitimate users.
  */
+const isRateLimitBypassed =
+  process.env.NODE_ENV === 'test' || process.env.CI === 'true' || process.env.PW_TEST === '1';
+
 export const checkRateLimit = async (
   key: string,
   maxRequests = 60,
   windowMs = 60_000,
 ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> => {
+  // Avoid DB/RPC dependency for e2e runs.
+  if (isRateLimitBypassed) {
+    const result = rateLimit(key, maxRequests, windowMs);
+    return { allowed: result.allowed, remaining: result.remaining, resetAt: result.resetAt };
+  }
+
   try {
     const { getServiceSupabase } = await import("./server/supabase");
     const db = getServiceSupabase();

@@ -15,18 +15,32 @@ export async function POST(req: Request) {
 
     const { name, email, password, accountType, accessCode } = validation.data!;
 
+    const adminDb = getServiceSupabase();
+
     if (accountType === 'director') {
-      const expectedCode = process.env.DIRECTOR_REGISTRATION_CODE;
-      if (!expectedCode) {
-        return NextResponse.json({ error: 'Director registration is not configured' }, { status: 500 });
+      if (!accessCode) {
+        return NextResponse.json({ error: 'Director invite token is required' }, { status: 400 });
       }
 
-      if (accessCode !== expectedCode) {
-        return NextResponse.json({ error: 'Invalid director access code' }, { status: 403 });
+      const { data: invite, error: inviteQueryError } = await adminDb
+        .from('director_invites')
+        .select('*')
+        .eq('token', accessCode)
+        .eq('email', email.toLowerCase().trim())
+        .single();
+
+      if (inviteQueryError || !invite) {
+        return NextResponse.json({ error: 'Invalid or missing director invite token' }, { status: 403 });
+      }
+
+      if (invite.used) {
+        return NextResponse.json({ error: 'This invite token has already been used' }, { status: 403 });
+      }
+
+      if (new Date(invite.expires_at) < new Date()) {
+        return NextResponse.json({ error: 'This invite token has expired' }, { status: 403 });
       }
     }
-
-    const adminDb = getServiceSupabase();
     const { data: createdUser, error: createUserError } = await adminDb.auth.admin.createUser({
       email: email.toLowerCase().trim(),
       password,
@@ -76,6 +90,13 @@ export async function POST(req: Request) {
       triggered_by: createdUser.user.id,
       severity: accountType === 'director' ? 'medium' : 'low',
     }]);
+
+    if (accountType === 'director' && accessCode) {
+      await adminDb
+        .from('director_invites')
+        .update({ used: true })
+        .eq('token', accessCode);
+    }
 
     return NextResponse.json({ user_id: createdUser.user.id, role: accountType }, { status: 201 });
   } catch (err: unknown) {

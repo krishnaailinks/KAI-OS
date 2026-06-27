@@ -48,8 +48,11 @@ export async function POST(req: Request) {
     const googleKey = process.env.GEMINI_API_KEY;
     if (!googleKey) {
       return NextResponse.json(
-        { error: "Gemini API key not configured. Set GEMINI_API_KEY in .env.local" },
-        { status: 500 }
+        {
+          error: 'Gemini API key not configured',
+          hint: 'GEMINI_API_KEY is missing on the production environment.',
+        },
+        { status: 503 }
       );
     }
 
@@ -111,7 +114,15 @@ Format as a professional audit report suitable for CA review. Use tables where a
     );
 
     if (!response.ok) {
-      throw new Error('AI generation failed');
+      const text = await response.text().catch(() => '');
+      console.error(`[Gemini Error] HTTP ${response.status}:`, text);
+      return NextResponse.json(
+        { 
+          error: `AI Service Unavailable (HTTP ${response.status})`,
+          hint: 'The upstream AI provider is currently failing. Please try again later.'
+        },
+        { status: 502 }
+      );
     }
 
     const aiResult = await response.json();

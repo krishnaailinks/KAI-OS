@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Activity, Users, FolderKanban, CheckCircle, FileText, Download } from "lucide-react";
+import { Activity, Users, FolderKanban, CheckCircle, FileText, Download, Building, Link as LinkIcon, UserPlus, Key } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 interface AdminSuperPanelProps {
@@ -22,6 +22,14 @@ export const AdminSuperPanel: React.FC<AdminSuperPanelProps> = ({ role }) => {
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [executingPayroll, setExecutingPayroll] = useState(false);
   const [payrollSuccess, setPayrollSuccess] = useState(false);
+
+  const [provisionClient, setProvisionClient] = useState({ name: '', email: '', password: '' });
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionMsg, setProvisionMsg] = useState<{type: 'error' | 'success', text: string} | null>(null);
+
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [inviteToken, setInviteToken] = useState('');
 
   useEffect(() => {
     if (role !== "director") return;
@@ -152,6 +160,98 @@ export const AdminSuperPanel: React.FC<AdminSuperPanelProps> = ({ role }) => {
           <Download className="w-4 h-4" /> 
           {executingPayroll ? "Executing..." : "Execute Payroll Cycle"}
         </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+        {/* Client Provisioning */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-xl shadow-sm flex flex-col">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Building className="w-5 h-5 text-indigo-500" /> Provision Client</h3>
+          
+          <div className="space-y-3 flex-1">
+            <input 
+              type="text" placeholder="Company Name" 
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm"
+              value={provisionClient.name} onChange={e => setProvisionClient({...provisionClient, name: e.target.value})} 
+            />
+            <input 
+              type="email" placeholder="Contact Email" 
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm"
+              value={provisionClient.email} onChange={e => setProvisionClient({...provisionClient, email: e.target.value})} 
+            />
+            <input 
+              type="password" placeholder="Temporary Password" 
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm"
+              value={provisionClient.password} onChange={e => setProvisionClient({...provisionClient, password: e.target.value})} 
+            />
+            {provisionMsg && (
+              <div className={`p-2 text-xs rounded border ${provisionMsg.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-600 border-green-200'}`}>
+                {provisionMsg.text}
+              </div>
+            )}
+          </div>
+          <button 
+            onClick={async () => {
+              setProvisioning(true); setProvisionMsg(null);
+              try {
+                const res = await apiFetch('/api/admin/clients/provision', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ companyName: provisionClient.name, contactEmail: provisionClient.email, password: provisionClient.password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  setProvisionMsg({ type: 'success', text: `Success! Client ${provisionClient.name} provisioned.` });
+                  setProvisionClient({ name: '', email: '', password: '' });
+                } else setProvisionMsg({ type: 'error', text: data.error || 'Failed' });
+              } catch(e) { setProvisionMsg({ type: 'error', text: 'Network error' }); }
+              finally { setProvisioning(false); }
+            }}
+            disabled={provisioning || !provisionClient.name || !provisionClient.email || !provisionClient.password}
+            className="mt-4 flex items-center justify-center gap-2 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-all shadow-md disabled:opacity-50"
+          >
+            <UserPlus className="w-4 h-4" /> {provisioning ? "Provisioning..." : "Provision Client Account"}
+          </button>
+        </div>
+
+        {/* Generate Director Invite */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-xl shadow-sm flex flex-col">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Key className="w-5 h-5 text-amber-500" /> Director Access Invite</h3>
+          <p className="text-sm text-slate-500 mb-4">Generate a secure, single-use registration link for a new director.</p>
+          <div className="space-y-3 flex-1">
+            <input 
+              type="email" placeholder="New Director's Email" 
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm"
+              value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} 
+            />
+            {inviteToken && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800/50 rounded break-all text-xs">
+                <div className="font-bold mb-1 flex items-center gap-1"><LinkIcon className="w-3 h-3"/> Invite Code Generated:</div>
+                <div className="select-all font-mono bg-white dark:bg-black/20 p-2 rounded">{inviteToken}</div>
+                <div className="mt-2 text-[10px] uppercase opacity-70">Send this code securely. It expires in 7 days.</div>
+              </div>
+            )}
+          </div>
+          <button 
+            onClick={async () => {
+              setInviting(true); setInviteToken('');
+              try {
+                const res = await apiFetch('/api/admin/directors/invite', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email: inviteEmail })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  setInviteToken(data.token);
+                  setInviteEmail('');
+                } else alert(`Invite generation failed: ${data.error}`);
+              } catch(e) { alert('Network error'); }
+              finally { setInviting(false); }
+            }}
+            disabled={inviting || !inviteEmail}
+            className="mt-4 flex items-center justify-center gap-2 w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold transition-all shadow-md disabled:opacity-50"
+          >
+            <Key className="w-4 h-4" /> {inviting ? "Generating..." : "Generate Access Code"}
+          </button>
+        </div>
       </div>
     </div>
   );
