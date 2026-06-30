@@ -56,7 +56,7 @@ BEGIN
   ON CONFLICT (key) DO UPDATE SET
     count    = CASE WHEN rl.reset_at <= v_now THEN 1 ELSE rl.count + 1 END,
     reset_at = CASE WHEN rl.reset_at <= v_now THEN v_reset ELSE rl.reset_at END
-  RETURNING count, rate_limit_counters.reset_at
+  RETURNING rl.count, rl.reset_at
   INTO v_count, v_reset_at;
 
   RETURN QUERY SELECT

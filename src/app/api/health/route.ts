@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireDirector, jsonError } from '@/lib/server/auth';
+import { requireDirector } from '@/lib/server/auth';
 
 export const dynamic = 'force-dynamic';
 

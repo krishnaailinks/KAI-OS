@@ -21,11 +21,22 @@ const eslintConfig = defineConfig([
   {
     rules: {
       "react-hooks/set-state-in-effect": "off",
+      // Allow intentionally-unused identifiers prefixed with `_`
+      // (e.g. required-but-unused signature params like `_config`).
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
-  // Test files use require() for dynamic imports (Jest pattern)
+  // Test files use require() for dynamic imports (Jest pattern) and often
+  // carry scaffolding identifiers that are intentionally unused.
   {
-    files: ["src/__tests__/**/*.test.ts"],
+    files: ["src/__tests__/**/*.test.ts", "tests/**/*.ts"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/no-unused-vars": "off",
