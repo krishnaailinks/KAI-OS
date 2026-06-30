@@ -87,9 +87,19 @@ export default defineConfig({
     // Use `npm run dev` locally so tests always run against the current
     // source without requiring a manual `npm run build`.
     // On CI, set USE_PROD_SERVER=1 to test the production build instead.
+    //
+    // The Next.js dev server compiles every route on demand; under the
+    // parallel load of the full E2E suite this can exhaust the default V8
+    // heap and crash the server (causing ERR_CONNECTION_REFUSED for all
+    // subsequent tests). Raise the heap limit so the dev server survives a
+    // full run out-of-the-box. The prod server (USE_PROD_SERVER=1) does not
+    // compile on demand and needs no extra heap.
     command: process.env.USE_PROD_SERVER ? 'npm run start' : 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: process.env.USE_PROD_SERVER
+      ? {}
+      : { NODE_OPTIONS: '--max-old-space-size=4096' },
   },
 });

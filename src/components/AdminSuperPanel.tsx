@@ -202,7 +202,7 @@ export const AdminSuperPanel: React.FC<AdminSuperPanelProps> = ({ role }) => {
                   setProvisionMsg({ type: 'success', text: `Success! Client ${provisionClient.name} provisioned.` });
                   setProvisionClient({ name: '', email: '', password: '' });
                 } else setProvisionMsg({ type: 'error', text: data.error || 'Failed' });
-              } catch(e) { setProvisionMsg({ type: 'error', text: 'Network error' }); }
+              } catch { setProvisionMsg({ type: 'error', text: 'Network error' }); }
               finally { setProvisioning(false); }
             }}
             disabled={provisioning || !provisionClient.name || !provisionClient.email || !provisionClient.password}
@@ -243,7 +243,7 @@ export const AdminSuperPanel: React.FC<AdminSuperPanelProps> = ({ role }) => {
                   setInviteToken(data.token);
                   setInviteEmail('');
                 } else alert(`Invite generation failed: ${data.error}`);
-              } catch(e) { alert('Network error'); }
+              } catch { alert('Network error'); }
               finally { setInviting(false); }
             }}
             disabled={inviting || !inviteEmail}
